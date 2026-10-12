@@ -155,3 +155,59 @@ jobs:
             artifacts/SQ8L-Windows-x64/SQ8L-Windows-x64.zip
             artifacts/SQ8L-Linux-x64/SQ8L-Linux-x64.tar.gz
             artifacts/SQ8L-Linux-arm64/SQ8L-Linux-arm64.tar.gz
+
+  # Every push to main (a merged PR) moves the "nightly" tag to it and replaces the files of
+  # the rolling "nightly" pre-release. Numbered releases still come from v* tags, above.
+  nightly:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [macos, windows-verify, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: nightly
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          pattern: SQ8L-*
+      - name: Publish the nightly pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A newer push publishes its own build; this one would only overwrite it.
+          head=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "main has moved on to $head: not publishing $GITHUB_SHA"
+            exit 0
+          fi
+          short=$(git rev-parse --short HEAD)
+          last=$(git describe --tags --abbrev=0 --match 'v*')
+          {
+            echo "**Automatic build of \`main\` at $short ($(git log -1 --format=%cs)).** It is rebuilt"
+            echo "after every merged pull request and passed the same checks as a release, but it has"
+            echo "not been tried by hand: for that, take the latest numbered release."
+            echo
+            echo "### Changes since $last"
+            echo
+            git log --no-merges --format='- %s (%h)' "$last..HEAD"
+            echo
+            cat .github/release-notes.md
+          } > notes.md
+          git tag -f nightly
+          git push -f origin refs/tags/nightly
+          title="SQ8L nightly ($short)"
+          files="artifacts/SQ8L-macOS-universal/SQ8L-macOS-universal.zip
+            artifacts/SQ8L-Windows-x64/SQ8L-Windows-x64.zip
+            artifacts/SQ8L-Linux-x64/SQ8L-Linux-x64.tar.gz
+            artifacts/SQ8L-Linux-arm64/SQ8L-Linux-arm64.tar.gz"
+          if gh release view nightly > /dev/null 2>&1; then
+            gh release edit nightly --title "$title" --notes-file notes.md --prerelease --latest=false
+            gh release upload nightly --clobber $files
+          else
+            gh release create nightly --title "$title" --notes-file notes.md --prerelease --latest=false \
+              --verify-tag $files
+          fi

@@ -72,7 +72,9 @@ code and verified against the original plugin running inside an x86 emulator.
 ## Installation
 
 Download the archive for your system from the
-[Releases](../../releases) page.
+[Releases](../../releases) page. The numbered releases have been tried by hand; the
+*nightly* pre-release is rebuilt from `main` after every merged pull request, once it has
+passed the same automatic checks.
 
 **macOS** (10.15 or later, universal): copy `SQ8L.component` to
 `~/Library/Audio/Plug-Ins/Components`, `SQ8L.vst3` to `~/Library/Audio/Plug-Ins/VST3`,
