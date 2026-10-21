@@ -2,11 +2,13 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <string>
 #include <vector>
 
 #include "DistrhoPlugin.hpp"
+#include "HostParams.h"
 #include "MtsEspTuning.h"
 #include "SQ8LVersion.h"
 #include "SharedLibrary.h"
@@ -45,6 +47,19 @@ public:
         editorMessages_.push_back({(static_cast<uint32_t>(b) << 16) | (static_cast<uint32_t>(a) & 0xFFFF), c});
     }
 
+    // ---- (port) the sound parameters published to the host (HostParams.h), engine lock held.
+    // What the host was last given or told for each: the value it set, or the value the
+    // editor reported to it (SQ8LUI::syncParameters). The editor reports every parameter whose
+    // edit buffer value differs, so a knob turn or a program change reaches the host.
+    int hostParameterValue(uint32_t index) const { return hostValues_[index]; }
+    // The editor reports `value` to the host. For a moment the host's values of that parameter
+    // are its own reports coming back, older than the knob that is still turning: they are
+    // not applied (see setParameterValue).
+    void reportedToHost(uint32_t index, int value) {
+        hostValues_[index] = value;
+        echoUntil_[index] = std::chrono::steady_clock::now() + kEchoTime;
+    }
+
     // ---- VST2 program semantics of the original (CSynth v010/v011/v012/v013/v047)
     void vst2SetProgram(int32_t index) override;
     int32_t vst2GetProgram() override;
@@ -63,6 +78,9 @@ protected:
         return d_version(sq8l::kVersionMajor, sq8l::kVersionMinor, sq8l::kVersionPatch);
     }
 
+    void initParameter(uint32_t index, Parameter& parameter) override;
+    float getParameterValue(uint32_t index) const override;
+    void setParameterValue(uint32_t index, float value) override;
     void initProgramName(uint32_t index, String& name) override;
     void loadProgram(uint32_t index) override;
     void initState(uint32_t index, State& state) override;
@@ -72,6 +90,8 @@ protected:
     void run(const float**, float** outputs, uint32_t frames, const MidiEvent* midi, uint32_t midiCount) override;
 
 private:
+    void hostKnowsParameters();  // engine lock held
+
     // Declared before synth_: the engine notifies (notifyEditor) while it is constructed.
     // Reserved to the cap notifyEditor enforces, in the initialiser rather than the body
     // because a program change arriving in run() reaches notifyEditor on the audio thread,
@@ -87,6 +107,11 @@ private:
     sq8l::MtsEspTuning mts_;
     sq8l::Synth synth_;
     std::vector<sq8l::RawMidiEvent> events_;
+    std::vector<int> hostValues_;  // see hostParameterValue
+    // See reportedToHost. Hosts hand a value back within a block or two; a turning knob is
+    // reported every 20 ms, so the window stays open for the whole turn.
+    static constexpr std::chrono::milliseconds kEchoTime{250};
+    std::vector<std::chrono::steady_clock::time_point> echoUntil_;
 
     DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SQ8LPlugin)
 };

@@ -33,6 +33,10 @@ jobs:
         run: SQ8L_TESTAPI=$PWD/build/libsq8l_testapi.dylib python3 tests/test_gui_extensions.py
       - name: HD graphics
         run: ./build/sq8l_hd_check
+      - name: Parameters published to the host (port addition)
+        run: |
+          ./build/sq8l_param_check -q
+          python3 tests/test_plugin_params.py build/bin/SQ8L.vst/Contents/MacOS/SQ8L
       # Code signing and notarization (Developer ID) go here once certificates are set up
       # as repository secrets; until then package.sh signs the bundles ad hoc.
       - name: Package
@@ -124,6 +128,10 @@ jobs:
         run: ./build/sq8l_drawn_check
       - name: HD graphics
         run: ./build/sq8l_hd_check
+      - name: Parameters published to the host (port addition)
+        run: |
+          ./build/sq8l_param_check -q
+          python3 tests/test_plugin_params.py build/bin/SQ8L.so
       - name: Editor additions of the port
         run: SQ8L_TESTAPI=$PWD/build/libsq8l_testapi.so python3 tests/test_gui_extensions.py
       - name: The version injected into the build

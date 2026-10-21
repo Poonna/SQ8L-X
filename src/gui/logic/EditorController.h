@@ -93,6 +93,9 @@ public:
     void nameEditKeyDown(int key);
     // SysEx program received on the MIDI input after REQ (FUN_0048427c).
     void sysexReceived(const uint8_t* data, size_t size);
+    // (port) The edit buffer changed behind the editor's back (the host set a parameter, see
+    // HostParams.h): the display, the knobs and the LEDs show it again.
+    void parametersChanged() { updateLeds(true); }
 
     // ------------------------------------------------------------ state (tests)
     LcdController& lcd() { return *ctr_; }

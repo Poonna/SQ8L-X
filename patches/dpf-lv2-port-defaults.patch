@@ -1,0 +1,24 @@
+Start the LV2 control ports from the parameters' defaults, not their current values.
+
+An LV2 host's control ports hold the defaults of the TTL until the host sets them, and run()
+hands the plug-in every port whose value differs from the last one it saw. Starting that
+record from getParameterValue() makes the first run() set every parameter whose current
+value is not its default. The SQ8L's parameters are the fields of the program the instance
+opened with (src/gui/logic/HostParams.h), whose values are the program's and not the
+defaults: the first run() would write the INIT program's values over it. Starting from the
+defaults, a port reaches the plug-in only once the host has really set it.
+
+diff --git a/distrho/src/DistrhoPluginLV2.cpp b/distrho/src/DistrhoPluginLV2.cpp
+index d2791951..256b24db 100644
+--- a/distrho/src/DistrhoPluginLV2.cpp
++++ b/distrho/src/DistrhoPluginLV2.cpp
+@@ -113,7 +113,8 @@ public:
+             for (uint32_t i=0; i < count; ++i)
+             {
+                 fPortControls[i] = nullptr;
+-                fLastControlValues[i] = fPlugin.getParameterValue(i);
++                // (SQ8L) what the host's ports hold before it sets them, see the patch
++                fLastControlValues[i] = fPlugin.getParameterDefault(i);
+             }
+         }
+         else

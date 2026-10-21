@@ -1,5 +1,6 @@
 #include "SQ8LPlugin.hpp"
 
+#include <cmath>
 #include <cstring>
 
 START_NAMESPACE_DISTRHO
@@ -40,7 +41,7 @@ void copyName(char* out, const std::string& s) {
 }  // namespace
 
 SQ8LPlugin::SQ8LPlugin()
-    : Plugin(0, sq8l::Synth::kNumPrograms, 1),
+    : Plugin(static_cast<uint32_t>(sq8l::gui::hostParams().size()), sq8l::Synth::kNumPrograms, 1),
       shared_(sq8l::SharedLibrary::acquire()),
       synth_(static_cast<float>(getSampleRate() > 0 ? getSampleRate() : 44100.0), shared_.library, shared_.settings,
              this),
@@ -48,6 +49,9 @@ SQ8LPlugin::SQ8LPlugin()
     synth_.setSampleRate(static_cast<float>(getSampleRate()));
     // (port) MTS-ESP: the engine reads this snapshot, run() refreshes it per block.
     synth_.setTuning(&mts_.tuning());
+    // The host starts out believing every parameter is at its default (initParameter).
+    for (const sq8l::gui::HostParam& p : sq8l::gui::hostParams()) hostValues_.push_back(p.def);
+    echoUntil_.resize(hostValues_.size());
 }
 
 SQ8LPlugin::~SQ8LPlugin() { sq8l::SharedLibrary::release(); }
@@ -56,6 +60,7 @@ void SQ8LPlugin::vst2SetProgram(int32_t index) {
     if (index < 0 || index >= sq8l::Synth::kNumPrograms) return;
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     synth_.setProgram(index);
+    hostKnowsParameters();
 }
 
 int32_t SQ8LPlugin::vst2GetProgram() {
@@ -87,6 +92,63 @@ void SQ8LPlugin::initProgramName(uint32_t index, String& name) {
 void SQ8LPlugin::loadProgram(uint32_t index) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     synth_.setProgram(static_cast<int32_t>(index));
+    hostKnowsParameters();
+}
+
+// ---- (port) parameters
+
+void SQ8LPlugin::initParameter(uint32_t index, Parameter& parameter) {
+    const auto& params = sq8l::gui::hostParams();
+    if (index >= params.size()) return;
+    const sq8l::gui::HostParam& p = params[index];
+    parameter.hints = kParameterIsAutomatable | kParameterIsInteger;
+    if (p.min == 0 && p.max == 1) parameter.hints |= kParameterIsBoolean;
+    parameter.name = p.name.c_str();
+    parameter.symbol = p.symbol.c_str();
+    parameter.description = p.hint.c_str();
+    parameter.ranges.min = static_cast<float>(p.min);
+    parameter.ranges.max = static_cast<float>(p.max);
+    parameter.ranges.def = static_cast<float>(p.def);
+    if (!p.valueTexts.empty()) {  // the display's names for the values (at most 147 of them)
+        const uint32_t n = static_cast<uint32_t>(p.valueTexts.size());
+        ParameterEnumerationValue* values = new ParameterEnumerationValue[n];
+        for (uint32_t i = 0; i < n; i++) {
+            values[i].label = p.valueTexts[i].c_str();
+            values[i].value = static_cast<float>(p.min + static_cast<int>(i));
+        }
+        parameter.enumValues.count = static_cast<uint8_t>(n);
+        parameter.enumValues.restrictedMode = true;
+        parameter.enumValues.values = values;
+    }
+}
+
+float SQ8LPlugin::getParameterValue(uint32_t index) const {
+    const auto& params = sq8l::gui::hostParams();
+    if (index >= params.size()) return 0.0f;
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    return static_cast<float>(sq8l::gui::hostParamValue(const_cast<sq8l::Synth&>(synth_).editBuffer(), params[index]));
+}
+
+// An edit like a knob turn, written only when the value changes (setHostParamValue). Not
+// while the editor is reporting this parameter: the host is then handing back what it was
+// told, and an older value of a knob that has moved on since must not turn it back.
+void SQ8LPlugin::setParameterValue(uint32_t index, float value) {
+    const auto& params = sq8l::gui::hostParams();
+    if (index >= params.size()) return;
+    const int v = static_cast<int>(std::lround(value));
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    hostValues_[index] = v;
+    if (std::chrono::steady_clock::now() < echoUntil_[index]) return;
+    sq8l::gui::setHostParamValue(synth_.editBuffer(), params[index], v);
+}
+
+// The host chose the program, and reads the parameters of it: nothing to report. (A chunk is
+// different: one saved before the port published parameters carries none, so the host still
+// has its old values, and the editor reports the chunk's.)
+void SQ8LPlugin::hostKnowsParameters() {
+    const auto& params = sq8l::gui::hostParams();
+    for (size_t i = 0; i < params.size(); i++)
+        hostValues_[i] = sq8l::gui::hostParamValue(synth_.editBuffer(), params[i]);
 }
 
 void SQ8LPlugin::initState(uint32_t index, State& state) {
