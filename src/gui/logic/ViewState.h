@@ -14,7 +14,7 @@
 //   SYNC / AM / MONO LEDs                        TAniDisplay ledSync/ledAm/ledMono     setValue(0 / 1)
 //                                                  +0x20c
 //   program name                                 TEdit progNameEdit (+0x3a8) Text      progNameEdit().setText
-//   status bar (hints, "Welcome to SQ8L")        TLabel StatusLabel1 (+0x34c)          setStatusText
+//   status bar (hints, "Welcome to SQ8L-X")        TLabel StatusLabel1 (+0x34c)          setStatusText
 //   voices "used/available"                      TLabel StatusLabel2 (+0x344)          setVoicesText
 //
 // Everything else the logic owns (pages, parameters, menus, popups, mouse jump, dialogs) is

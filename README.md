@@ -1,8 +1,9 @@
-# SQ8L — 64-bit port
+# SQ8L-X — the SQ8L 64-bit port with parameters for the DAW
 
-> **SQ8X** is a fork of [sq8l-revival/SQ8L](https://github.com/sq8l-revival/SQ8L) that
+> **SQ8L-X** is a fork of [sq8l-revival/SQ8L](https://github.com/sq8l-revival/SQ8L) that
 > publishes the sound parameters to the DAW for automation (see *Parameters for the DAW*
-> below). The plug-in keeps the SQ8L name and IDs, so projects of the original still load.
+> below). It is a plug-in of its own, with its own name, IDs and data folder, so it installs
+> next to the original SQ8L and the SQ8L port. Everything below about the port applies to it.
 
 A faithful 64-bit port of **SQ8L 0.91b**, the free Ensoniq SQ-80 emulation by
 **Siegfried Kullmann** (2006–2008), for modern macOS (Apple Silicon and Intel), Windows x64
@@ -31,10 +32,12 @@ code and verified against the original plugin running inside an x86 emulator.
 - **Editor: the original's, then improved.** The window was ported from the original's own
   artwork and drawing logic, and is free to improve on it: sharp at any size, faded unused
   knobs, a tidier OPTIONS menu.
-- **Compatibility.** Same VST2 unique ID (`SQ8L`), same 512 programs and the same chunk
-  format as the original: projects saved with the original plugin load with their sound.
-  Library files (`.8XL`), bank files and SQ-80/ESQ-1 SysEx are read and written exactly
-  like the original.
+- **Compatibility.** Same 512 programs and the same chunk format as the original. Library
+  files (`.8XL`), bank files and SQ-80/ESQ-1 SysEx are read and written exactly like the
+  original. SQ8L-X has its own plug-in IDs (VST2 `SQ8X`, AU subtype `SQ8X`, its own VST3,
+  CLAP and LV2 IDs), so a host sees it as a different plug-in: a project saved with the
+  original SQ8L or the SQ8L port keeps using that plug-in and does not open in SQ8L-X. To
+  bring a sound across, save it to the library or a bank there and load it in SQ8L-X.
 
 ### Differences from the original
 
@@ -107,7 +110,7 @@ code and verified against the original plugin running inside an x86 emulator.
   are voices. With 8 voices the sound is bit-exact; with more, a performance changes only
   where the original would have stolen a voice. The output is not rescaled, so many voices
   sounding together are louder: use *Output gain* above if needed.
-- **Parameters for the DAW (SQ8X):** the original publishes none, so a host could neither
+- **Parameters for the DAW (SQ8L-X):** the original publishes none, so a host could neither
   automate the sound nor show it. The plug-in now publishes the 228 sound parameters of the
   display pages, named after the page and the field as the display shows them (`OSC1 WAVE`,
   `FILT FREQ`, `LFO2 FMOD.SEL`, `EMU VOICES`...), with their ranges and, where the display
@@ -115,8 +118,8 @@ code and verified against the original plugin running inside an x86 emulator.
   current program: automating it edits the program like turning its knob (the display follows),
   and selecting another program, loading a chunk or turning a knob in the editor changes what
   the host sees. Knob turns are reported to the host as one gesture each, so a touch or latch
-  automation mode records them. Projects and chunks are unchanged: the program, not the
-  parameter list, is what is saved, so projects of the original still load with their sound.
+  automation mode records them. Chunks are unchanged: the program, not the parameter list,
+  is what is saved.
   The editor is what tells the host about changes, so with the editor closed a MIDI program
   change is heard but not shown in the host until the editor is opened again.
 - Text (status bar, program name) uses Liberation Sans, a free font metrically compatible
@@ -136,31 +139,34 @@ Download the archive for your system from the
 *nightly* pre-release is rebuilt from `main` after every merged pull request, once it has
 passed the same automatic checks.
 
-**macOS** (10.15 or later, universal): copy `SQ8L.component` to
-`~/Library/Audio/Plug-Ins/Components`, `SQ8L.vst3` to `~/Library/Audio/Plug-Ins/VST3`,
-`SQ8L.vst` to `~/Library/Audio/Plug-Ins/VST`, `SQ8L.clap` to `~/Library/Audio/Plug-Ins/CLAP`.
+**macOS** (10.15 or later, universal): copy `SQ8L-X.component` to
+`~/Library/Audio/Plug-Ins/Components`, `SQ8L-X.vst3` to `~/Library/Audio/Plug-Ins/VST3`,
+`SQ8L-X.vst` to `~/Library/Audio/Plug-Ins/VST`, `SQ8L-X.clap` to `~/Library/Audio/Plug-Ins/CLAP`.
 The plug-ins are not notarized by Apple, so macOS blocks them when they come from the
 internet: remove the quarantine flag in Terminal, then restart your DAW.
 
 ```sh
-xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/SQ8L.component ~/Library/Audio/Plug-Ins/VST3/SQ8L.vst3 ~/Library/Audio/Plug-Ins/VST/SQ8L.vst ~/Library/Audio/Plug-Ins/CLAP/SQ8L.clap
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/SQ8L-X.component ~/Library/Audio/Plug-Ins/VST3/SQ8L-X.vst3 ~/Library/Audio/Plug-Ins/VST/SQ8L-X.vst ~/Library/Audio/Plug-Ins/CLAP/SQ8L-X.clap
 ```
 
-**Windows** (10/11, 64-bit): copy `SQ8L.dll` (VST2) to your VST plug-in folder,
-`SQ8L.vst3` to `C:\Program Files\Common Files\VST3`, `SQ8L.clap` to
-`C:\Program Files\Common Files\CLAP`. If the old 32-bit `SQ8L.dll` is in the same folder,
-keep a copy of it first: the files have the same name.
+**Windows** (10/11, 64-bit): copy `SQ8L-X.dll` (VST2) to your VST plug-in folder,
+`SQ8L-X.vst3` to `C:\Program Files\Common Files\VST3`, `SQ8L-X.clap` to
+`C:\Program Files\Common Files\CLAP`. The files do not clash with the original's or the
+port's `SQ8L.*`: all of them can be installed together.
 
-**Linux** (x86-64 or ARM64, X11 or XWayland): unpack `SQ8L-Linux-x64.tar.gz` (or `-arm64`)
-and copy `SQ8L.so` (VST2) to `~/.vst`, `SQ8L.vst3` to `~/.vst3`, `SQ8L.clap` to `~/.clap`
-and `SQ8L.lv2` to `~/.lv2`. Banks A and B and the options are kept in `~/.config/SQ8L`.
+**Linux** (x86-64 or ARM64, X11 or XWayland): unpack `SQ8L-X-Linux-x64.tar.gz` (or `-arm64`)
+and copy `SQ8L-X.so` (VST2) to `~/.vst`, `SQ8L-X.vst3` to `~/.vst3`, `SQ8L-X.clap` to
+`~/.clap` and `SQ8L-X.lv2` to `~/.lv2`. Banks A and B and the options are kept in
+`~/.config/SQ8L-X`.
 
 The user library (banks A and B) and the options are stored in
-`~/Library/Application Support/SQ8L` (macOS), `%APPDATA%\SQ8L` (Windows) or `~/.config/SQ8L`
-(Linux) as
-`SQ8L_backup.dat` and `SQ8L.ini`, the same files the original kept in its folder. To use an
-existing library, copy your old `SQ8L_backup.dat` there (or load it with *FILE → Load
-library*).
+`~/Library/Application Support/SQ8L-X` (macOS), `%APPDATA%\SQ8L-X` (Windows) or
+`~/.config/SQ8L-X` (Linux) as `SQ8L_backup.dat` and `SQ8L.ini`, the same files the original
+kept in its folder. The folder is SQ8L-X's own: the library is written back whole when the
+last instance closes, so sharing the SQ8L port's folder would let each overwrite the other's
+edits. The first time, SQ8L-X starts from the SQ8L port's library and options (its `SQ8L`
+folder, which it never writes to), so your banks come along. To use another library, copy
+its `SQ8L_backup.dat` into the SQ8L-X folder (or load it with *FILE → Load library*).
 
 The manual of the original (`readme.txt` in the SQ8L 0.91b archive) applies unchanged.
 

@@ -3,8 +3,8 @@ the VST2 ABI: no emulator needed.
 
     python tests/test_plugin_params.py [path to the VST2 binary]
 
-Default: build/clang-cl/bin/SQ8L.dll (Windows), build/unix/bin/SQ8L.so (Linux),
-build/unix/bin/SQ8L.vst/Contents/MacOS/SQ8L (macOS).
+Default: build/clang-cl/bin/SQ8L-X.dll (Windows), build/unix/bin/SQ8L-X.so (Linux),
+build/unix/bin/SQ8L-X.vst/Contents/MacOS/SQ8L-X (macOS).
 
 Checks: the count, names and value texts; that a value set by the host lands in the program
 (the chunk), changes the sound and reads back, whatever the host believed the value was;
@@ -18,11 +18,11 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if sys.platform == "win32":
-    DEFAULT = os.path.join(ROOT, "build", "clang-cl", "bin", "SQ8L.dll")
+    DEFAULT = os.path.join(ROOT, "build", "clang-cl", "bin", "SQ8L-X.dll")
 elif sys.platform == "darwin":
-    DEFAULT = os.path.join(ROOT, "build", "unix", "bin", "SQ8L.vst", "Contents", "MacOS", "SQ8L")
+    DEFAULT = os.path.join(ROOT, "build", "unix", "bin", "SQ8L-X.vst", "Contents", "MacOS", "SQ8L-X")
 else:
-    DEFAULT = os.path.join(ROOT, "build", "unix", "bin", "SQ8L.so")
+    DEFAULT = os.path.join(ROOT, "build", "unix", "bin", "SQ8L-X.so")
 
 HOSTCB = C.CFUNCTYPE(C.c_ssize_t, C.c_void_p, C.c_int32, C.c_int32, C.c_ssize_t, C.c_void_p, C.c_float)
 DISPATCH = C.CFUNCTYPE(C.c_ssize_t, C.c_void_p, C.c_int32, C.c_int32, C.c_ssize_t, C.c_void_p, C.c_float)

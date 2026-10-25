@@ -1,6 +1,11 @@
 // The sound library shared by all plugin instances in a process, like the original
 // (one CsoundLib per loaded DLL): restored from SQ8L_backup.dat when the first instance
 // opens, saved back when the last one closes. Settings (SQ8L.ini) live next to it.
+//
+// (SQ8L-X) In a folder of its own, SQ8L-X rather than SQ8L: the library is written back
+// whole when the last instance closes, so with the SQ8L port in the same host each would
+// overwrite the other's edits. A file SQ8L-X does not have yet is read from the SQ8L
+// folder, so the banks and options of the SQ8L port come along the first time.
 #pragma once
 
 #include <cstdlib>
@@ -28,20 +33,26 @@
 
 namespace sq8l {
 
-inline std::string userDataDir() {
+// The data folder named `name`: %APPDATA%\<name>\, ~/Library/Application Support/<name>/,
+// $XDG_CONFIG_HOME/<name>/ or ~/.config/<name>/.
+inline std::string dataDirNamed(const std::string& name) {
 #if defined(_WIN32)
     const char* base = std::getenv("APPDATA");
-    std::string dir = std::string(base ? base : ".") + "\\SQ8L\\";
+    std::string dir = std::string(base ? base : ".") + "\\" + name + "\\";
 #elif defined(__APPLE__)
     const char* home = std::getenv("HOME");
-    std::string dir = std::string(home ? home : ".") + "/Library/Application Support/SQ8L/";
+    std::string dir = std::string(home ? home : ".") + "/Library/Application Support/" + name + "/";
 #else
     const char* xdg = std::getenv("XDG_CONFIG_HOME");
     const char* home = std::getenv("HOME");
-    std::string dir = xdg ? std::string(xdg) + "/SQ8L/" : std::string(home ? home : ".") + "/.config/SQ8L/";
+    std::string dir = xdg ? std::string(xdg) + "/" + name + "/" : std::string(home ? home : ".") + "/.config/" + name + "/";
 #endif
     return dir;
 }
+
+inline std::string userDataDir() { return dataDirNamed("SQ8L-X"); }
+// The SQ8L port's folder, read (never written) for what SQ8L-X does not have yet.
+inline std::string sq8lDataDir() { return dataDirNamed("SQ8L"); }
 
 inline std::vector<uint8_t> readFile(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
@@ -61,8 +72,8 @@ public:
         std::lock_guard<std::mutex> lock(s.mutex);
         if (s.refs++ == 0) {
             const std::string dir = userDataDir();
-            s.library = std::make_unique<SoundLibrary>(readFile(dir + "SQ8L_backup.dat"));
-            const std::vector<uint8_t> ini = readFile(dir + "SQ8L.ini");
+            s.library = std::make_unique<SoundLibrary>(readOwnOrSq8l("SQ8L_backup.dat"));
+            const std::vector<uint8_t> ini = readOwnOrSq8l("SQ8L.ini");
             s.settings = Settings();
             if (!ini.empty()) s.settings.loadIni(std::string(ini.begin(), ini.end()));
         }
@@ -98,6 +109,12 @@ private:
         Settings settings;
     };
 
+    static std::vector<uint8_t> readOwnOrSq8l(const std::string& file) {
+        std::vector<uint8_t> data = readFile(userDataDir() + file);
+        if (data.empty()) data = readFile(sq8lDataDir() + file);
+        return data;
+    }
+
     static State& state() {
         // Never destroyed: plugin instances (including DPF's metadata instance) may be
         // released during static destruction at process exit.
@@ -105,7 +122,7 @@ private:
         return *s;
     }
 
-    // Create the data folder (one level below an existing parent, like %APPDATA%\SQ8L).
+    // Create the data folder (one level below an existing parent, like %APPDATA%\SQ8L-X).
     static void makeDir(const std::string& dir) {
 #if defined(_WIN32)
         CreateDirectoryA(dir.c_str(), nullptr);

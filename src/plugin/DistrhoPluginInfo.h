@@ -1,13 +1,14 @@
-// SQ8L port: plugin identity. The VST2 unique ID matches the original ('SQ8L') so
-// hosts can load projects saved with the original 32-bit plugin.
+// SQ8L-X: plugin identity. Its own name and IDs (VST2 'SQ8X', VST3, CLAP, LV2, AU subtype
+// 'SQ8X'), so it installs next to the original SQ8L and the SQ8L port, and hosts tell them
+// apart. The chunk format is the original's: programs, banks and libraries move between them.
 #pragma once
 
 #define DISTRHO_PLUGIN_BRAND "Siegfried Kullmann"
-#define DISTRHO_PLUGIN_NAME "SQ8L"
-#define DISTRHO_PLUGIN_URI "urn:sq8l:sq8l"
-#define DISTRHO_PLUGIN_CLAP_ID "sq8l.sq8l"
+#define DISTRHO_PLUGIN_NAME "SQ8L-X"
+#define DISTRHO_PLUGIN_URI "urn:sq8l-x:sq8l-x"
+#define DISTRHO_PLUGIN_CLAP_ID "sq8l-x.sq8l-x"
 #define DISTRHO_PLUGIN_BRAND_ID SQ8L
-#define DISTRHO_PLUGIN_UNIQUE_ID SQ8L
+#define DISTRHO_PLUGIN_UNIQUE_ID SQ8X
 
 #define DISTRHO_PLUGIN_HAS_UI 1
 #define DISTRHO_PLUGIN_WANT_DIRECT_ACCESS 1
@@ -27,8 +28,8 @@
 #define DISTRHO_PLUGIN_WANT_STATE 1
 #define DISTRHO_PLUGIN_WANT_FULL_STATE 1
 #define DISTRHO_PLUGIN_WANT_PROGRAMS 1
-// VST2 chunks are the original's raw bytes (571-byte "SQ8L.EDIT" record) so projects
-// saved with the original 32-bit plugin load directly (see patches/dpf-vst2-compat.patch).
+// VST2 chunks are the original's raw bytes (571-byte "SQ8L.EDIT" record), the same format
+// as the original 32-bit plugin's (see patches/dpf-vst2-compat.patch).
 #define DISTRHO_PLUGIN_VST2_RAW_CHUNK_KEY "editbuffer"
 
 // VST2 programs behave like the original: 512 library slots, edit-buffer name,

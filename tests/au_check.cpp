@@ -4,7 +4,7 @@
 // handed to or by the plug-in with the wrong ownership is a use after free, so run it with
 // MallocScribble=1: freed memory is then overwritten and the mistake crashes every time.
 //
-//   MallocScribble=1 sq8l_au_check path/to/SQ8L.component
+//   MallocScribble=1 sq8l_au_check path/to/SQ8L-X.component
 #include <AudioToolbox/AudioToolbox.h>
 #include <CoreFoundation/CoreFoundation.h>
 
@@ -29,8 +29,8 @@ AudioUnit open(const char* path) {
     auto factory = reinterpret_cast<AudioComponentFactoryFunction>(
         CFBundleGetFunctionPointerForName(bundle, CFSTR("PluginAUFactory")));
     if (factory == nullptr) return nullptr;
-    AudioComponentDescription desc{'aumu', 'SQ8L', 'SQ8L', 0, 0};
-    AudioComponent comp = AudioComponentRegister(&desc, CFSTR("sq8l_au_check: SQ8L"), 1, factory);
+    AudioComponentDescription desc{'aumu', 'SQ8X', 'SQ8L', 0, 0};
+    AudioComponent comp = AudioComponentRegister(&desc, CFSTR("sq8l_au_check: SQ8L-X"), 1, factory);
     AudioUnit au = nullptr;
     if (comp == nullptr || AudioComponentInstanceNew(comp, &au) != noErr) return nullptr;
     if (AudioUnitInitialize(au) != noErr) return nullptr;
@@ -89,7 +89,7 @@ CFPropertyListRef withProgram(CFPropertyListRef info, SInt32 program) {
 int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);  // what ran last is the culprit if it crashes
     if (argc < 2) {
-        std::fprintf(stderr, "usage: sq8l_au_check path/to/SQ8L.component\n");
+        std::fprintf(stderr, "usage: sq8l_au_check path/to/SQ8L-X.component\n");
         return 2;
     }
     AudioUnit au = open(argv[1]);

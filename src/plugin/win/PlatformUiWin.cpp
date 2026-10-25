@@ -23,7 +23,7 @@ namespace {
 
 constexpr int kFormW = 626, kFormH = 430;
 constexpr int kCtlList = 100, kCtlOk = 101, kCtlCancel = 102, kCtlCompare = 103, kCtlBank = 104;
-const char* const kDialogClass = "SQ8LPortV1Dialog";
+const char* const kDialogClass = "SQ8LXPortV1Dialog";
 
 void appendMenu(HMENU menu, const std::vector<MenuItem>& items) {
     for (const MenuItem& it : items) {
@@ -118,7 +118,7 @@ struct PlatformUiWin::Impl {
     // The plugin window gets WM_CTLCOLOREDIT for the EDIT (black background like the original)
     // and, while a column menu is up in a dark host, its owner-draw messages.
     static LRESULT CALLBACK parentSubclass(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
-        auto* self = reinterpret_cast<Impl*>(GetPropA(w, "SQ8LPortV1Impl"));
+        auto* self = reinterpret_cast<Impl*>(GetPropA(w, "SQ8LXPortV1Impl"));
         if (self && msg == WM_MEASUREITEM && self->darkMenu.measure(reinterpret_cast<MEASUREITEMSTRUCT*>(lp)))
             return TRUE;
         if (self && msg == WM_DRAWITEM && self->darkMenu.draw(reinterpret_cast<DRAWITEMSTRUCT*>(lp))) return TRUE;
@@ -212,7 +212,7 @@ PlatformUiWin::PlatformUiWin(void* window, Hooks hooks) : impl_(std::make_unique
     // The window is the owner of the popup menus and of the program name EDIT, so it is where
     // their messages arrive.
     if (impl_->hwnd) {
-        SetPropA(impl_->hwnd, "SQ8LPortV1Impl", impl_.get());
+        SetPropA(impl_->hwnd, "SQ8LXPortV1Impl", impl_.get());
         impl_->parentProc = reinterpret_cast<WNDPROC>(
             SetWindowLongPtrA(impl_->hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&Impl::parentSubclass)));
     }
@@ -222,7 +222,7 @@ PlatformUiWin::~PlatformUiWin() {
     Impl& I = *impl_;
     if (I.parentProc) {
         SetWindowLongPtrA(I.hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(I.parentProc));
-        RemovePropA(I.hwnd, "SQ8LPortV1Impl");
+        RemovePropA(I.hwnd, "SQ8LXPortV1Impl");
     }
     if (I.edit) DestroyWindow(I.edit);
     if (I.editFont) DeleteObject(I.editFont);
@@ -397,7 +397,7 @@ void PlatformUiWin::showModInfo(const std::vector<std::string>& lines) {
 
 void PlatformUiWin::showAbout(const std::string& text) {
     Impl::Released unlocked(impl_->hooks);
-    MessageBoxA(impl_->hwnd, text.c_str(), "SQ8L", MB_OK);
+    MessageBoxA(impl_->hwnd, text.c_str(), "SQ8L-X", MB_OK);
 }
 
 }  // namespace sq8l::gui
