@@ -100,7 +100,7 @@ if(SQ8L_BUILD_PLUGIN)
   # Local DPF / pugl patches (kept out of the submodules): apply once if not yet applied.
   foreach(entry "dpf-vst2-compat.patch=third_party/DPF" "dpf-msvc-enum.patch=third_party/DPF"
                 "dpf-swap-interval.patch=third_party/DPF" "dpf-au-preset-name.patch=third_party/DPF"
-                "dpf-vst3-program-change.patch=third_party/DPF"
+                "dpf-vst3-program-change.patch=third_party/DPF" "dpf-lv2-port-defaults.patch=third_party/DPF"
                 "pugl-x11-nested-update.patch=third_party/DPF/dgl/src/pugl-upstream")
     string(REPLACE "=" ";" entry "${entry}")
     list(GET entry 0 patch)
@@ -179,7 +179,8 @@ if(SQ8L_BUILD_PLUGIN)
              $<$<PLATFORM_ID:Linux>:${CMAKE_SOURCE_DIR}/src/plugin/linux/ModalFiber.cpp>)
   target_include_directories(SQ8L PUBLIC src/plugin)
   target_link_libraries(SQ8L PUBLIC sq8l_engine)
-  target_link_libraries(SQ8L-dsp PUBLIC sq8l_engine sq8l_version)
+  # The editor logic for its pages, which the published parameters are made from (HostParams.h).
+  target_link_libraries(SQ8L-dsp PUBLIC sq8l_engine sq8l_version sq8l_gui_logic)
   add_dependencies(SQ8L-dsp sq8l_version_header)
   # MTS-ESP client (third_party/MTS-ESP, 0BSD): dlopens the master's library at run time.
   target_include_directories(SQ8L-dsp PUBLIC ${CMAKE_SOURCE_DIR}/third_party/MTS-ESP/Client)
@@ -205,6 +206,10 @@ endif()
 # The drawn menus and dialogs of the Linux editor, without a window (tests/drawn_check.cpp).
 add_executable(sq8l_drawn_check tests/drawn_check.cpp)
 target_link_libraries(sq8l_drawn_check PRIVATE sq8l_gui_drawn)
+
+# The parameters published to the host (tests/param_check.cpp).
+add_executable(sq8l_param_check tests/param_check.cpp)
+target_link_libraries(sq8l_param_check PRIVATE sq8l_gui_logic)
 
 # HD graphics without a window (tests/hd_check.cpp).
 add_executable(sq8l_hd_check tests/hd_check.cpp)

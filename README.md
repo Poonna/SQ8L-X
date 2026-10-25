@@ -1,5 +1,9 @@
 # SQ8L — 64-bit port
 
+> **SQ8X** is a fork of [sq8l-revival/SQ8L](https://github.com/sq8l-revival/SQ8L) that
+> publishes the sound parameters to the DAW for automation (see *Parameters for the DAW*
+> below). The plug-in keeps the SQ8L name and IDs, so projects of the original still load.
+
 A faithful 64-bit port of **SQ8L 0.91b**, the free Ensoniq SQ-80 emulation by
 **Siegfried Kullmann** (2006–2008), for modern macOS (Apple Silicon and Intel), Windows x64
 and Linux (x86-64 and ARM64), as **VST2, VST3, Audio Unit (macOS), CLAP and LV2 (Linux)**.
@@ -103,6 +107,18 @@ code and verified against the original plugin running inside an x86 emulator.
   are voices. With 8 voices the sound is bit-exact; with more, a performance changes only
   where the original would have stolen a voice. The output is not rescaled, so many voices
   sounding together are louder: use *Output gain* above if needed.
+- **Parameters for the DAW (SQ8X):** the original publishes none, so a host could neither
+  automate the sound nor show it. The plug-in now publishes the 228 sound parameters of the
+  display pages, named after the page and the field as the display shows them (`OSC1 WAVE`,
+  `FILT FREQ`, `LFO2 FMOD.SEL`, `EMU VOICES`...), with their ranges and, where the display
+  names the values, the same names (`SAW`, `ENV3`, `TRI`...). A parameter is a field of the
+  current program: automating it edits the program like turning its knob (the display follows),
+  and selecting another program, loading a chunk or turning a knob in the editor changes what
+  the host sees. Knob turns are reported to the host as one gesture each, so a touch or latch
+  automation mode records them. Projects and chunks are unchanged: the program, not the
+  parameter list, is what is saved, so projects of the original still load with their sound.
+  The editor is what tells the host about changes, so with the editor closed a MIDI program
+  change is heard but not shown in the host until the editor is opened again.
 - Text (status bar, program name) uses Liberation Sans, a free font metrically compatible
   with Arial, with anti-aliasing.
 - SEND/REQ to a hardware SQ-80/ESQ-1 over MIDI ports are not connected yet (SysEx import and

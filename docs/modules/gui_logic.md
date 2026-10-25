@@ -14,6 +14,7 @@ emulator.
 | `src/gui/logic/LcdData.h`, `data/GuiLogicData.cpp` | the 18 page definitions + per sub-page / per parameter set up, text tables, VFD character maps (generated) |
 | `src/gui/logic/Formatters.{h,cpp}` | value formatters (editBuffer 0x461114..0x461c1c, ClcdCtr 0x458ff8..0x45907c), popup texts, Delphi helpers (IntToStr, Str(v:w), zero padding) |
 | `src/gui/logic/MouseJump.h` | CmouseJump (save / restore the cursor around menus and knob drags) |
+| `src/gui/logic/HostParams.{h,cpp}` | (port) the parameters published to the host, made from the pages (`buildLcdPages`); `tests/param_check.cpp`, `tests/test_plugin_params.py` |
 | `src/gui/logic/Dialogs.{h,cpp}` | TSelSingleForm (WRITE / bank select), TmidiSelForm, TModInfoForm text (FUN_0047cb80), TAboutForm text |
 | `src/gui/logic/PlatformUi.h` | what the platform supplies: popup menus, message boxes, file dialogs + files, modal dialogs, info windows, cursor, focus |
 | `src/gui/logic/EditorHost.h` | what the engine supplies: edit buffer, library, settings, panic, voices, MIDI ports |

@@ -92,6 +92,10 @@ struct LcdPage {                 // ClcdCtr_pageML depth 0 + depth 1
     const LcdSubPage& sub() const { return subs[size_t(cur)]; }
 };
 
+// The 18 pages as FUN_0047e340 sets them up (LcdController::buildPages), without a display:
+// also what the plugin publishes its parameters from (HostParams.h).
+std::vector<LcdPage> buildLcdPages();
+
 // Callbacks of ClcdCtr (+0x28..+0x6c) implemented by the editor form.
 class LcdListener {
 public:

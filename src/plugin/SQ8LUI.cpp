@@ -21,6 +21,7 @@
 
 #include "DistrhoUI.hpp"
 #include "EditorView.h"
+#include "HostParams.h"
 #include "SQ8LPlugin.hpp"
 #include "hd/HdRenderer.h"
 #include "logic/EditorController.h"
@@ -184,9 +185,13 @@ public:
 
         auto releaseHook = [this] {  // a native or drawn modal loop starts
             ++modalLoops_;
+            ++modalDepth_;
             releaseEngine();
         };
-        auto acquireHook = [this] { acquireEngine(); };
+        auto acquireHook = [this] {
+            acquireEngine();
+            --modalDepth_;
+        };
         auto pumpHook = [this] {
             if (!controller_) return;
             deliverNotifications();
@@ -260,6 +265,9 @@ public:
         host_.setController(controller_.get());
         view_->onContextMenu = [this](sq8l::gui::Control&, int x, int y) { controller_->contextMenu(x, y); };
         controller_->show();
+        for (const sq8l::gui::HostParam& p : sq8l::gui::hostParams())
+            paramsShown_.push_back(sq8l::gui::hostParamValue(plugin_.synth().editBuffer(), p));
+        paramsTouched_.assign(paramsShown_.size(), false);
         // The LEDs size themselves on their first paint, which mouse hit-testing depends on.
         view_->render(frame_);
         opening_ = Opening::hostsTurn;  // see askHostForSize
@@ -295,6 +303,7 @@ public:
     }
 
 protected:
+    // The plugin has already put the value into the edit buffer: syncParameters shows it.
     void parameterChanged(uint32_t, float) override {}
 
     void uiIdle() override {
@@ -320,6 +329,7 @@ protected:
             deliverNotifications();
             controller_->idle(ms > 200 ? 200 : ms);
         });
+        syncParameters();
         repaintIfChanged();
     }
 
@@ -827,6 +837,50 @@ private:
     }
 #endif
 
+    // (port) The parameters published to the host (HostParams.h), once per tick. A change the
+    // editor did not make (the host's automation) is shown; a change the host does not know
+    // of (a knob turn, a program change, a chunk) is reported to it, outside the engine lock.
+    // A drag is one gesture, from its first change to the button coming up, so a host in a
+    // touch mode records the whole turn; any other report is a gesture of its own.
+    void syncParameters() {
+        const auto& params = sq8l::gui::hostParams();
+        const bool held = buttons_ != 0;
+        std::vector<std::pair<uint32_t, int>> report;
+        {
+            Engine lock(*this);
+            const sq8l::EditBuffer& eb = plugin_.synth().editBuffer();
+            bool changed = false;
+            for (uint32_t i = 0; i < params.size(); i++) {
+                const int v = sq8l::gui::hostParamValue(eb, params[i]);
+                if (v != paramsShown_[i]) changed = true;
+                if (v != plugin_.hostParameterValue(i)) {
+                    plugin_.reportedToHost(i, v);  // before the host can echo it back
+                    report.emplace_back(i, v);
+                }
+            }
+            // Not while a knob turns (it counts its own way there, the refresh waits for the
+            // button to come up) nor under a menu or dialog (the logic is in the middle of it).
+            if (changed && !held && modalDepth_ == 0) {
+                controller_->parametersChanged();
+                for (uint32_t i = 0; i < params.size(); i++) paramsShown_[i] = sq8l::gui::hostParamValue(eb, params[i]);
+            }
+        }
+        for (const auto& [i, v] : report) {
+            if (!paramsTouched_[i]) editParameter(i, true);
+            setParameterValue(i, static_cast<float>(v));
+            if (held)
+                paramsTouched_[i] = true;
+            else if (!paramsTouched_[i])
+                editParameter(i, false);
+        }
+        if (!held)
+            for (uint32_t i = 0; i < paramsTouched_.size(); i++)
+                if (paramsTouched_[i]) {
+                    paramsTouched_[i] = false;
+                    editParameter(i, false);
+                }
+    }
+
     // Post the master's queued notifications to the editor (engine lock held).
     void deliverNotifications() {
         for (const auto& m : plugin_.takeEditorMessages()) {
@@ -908,6 +962,9 @@ private:
     GLuint texture_ = 0;
     int depth_ = 0;
     int modalLoops_ = 0;  // modal loops started (menus/dialogs), see onMouse
+    int modalDepth_ = 0;  // modal loops running
+    std::vector<int> paramsShown_;      // the parameters as the editor last showed them
+    std::vector<bool> paramsTouched_;   // gestures open with the host (a knob turning)
     uint32_t buttons_ = 0;
     MouseButton lastButton_ = MouseButton::Left;
     uint lastTime_ = 0;
