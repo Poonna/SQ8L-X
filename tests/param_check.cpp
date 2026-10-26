@@ -82,6 +82,11 @@ int main(int argc, char** argv) {
     }
     for (size_t i = first; i < total && i < params.size(); i++)
         if (params[i].name != added[i - first]) fail(params[i], "not where it was added to the published order");
+    // FILT TYPE names every type the engine plays (programFilterType), the last added last.
+    for (const HostParam& p : params)
+        if (p.name == "FILT TYPE" && (p.min != 0 || p.max != sq8l::kNumFilterTypes - 1 || p.valueTexts.empty() ||
+                                      p.valueTexts.back() != "CEM"))
+            fail(p, "does not name every filter type");
     std::printf("%zu parameters, %d problem(s)\n", params.size(), errors);
     return errors ? 1 : 0;
 }

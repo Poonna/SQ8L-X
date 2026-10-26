@@ -66,6 +66,10 @@ struct ModSourceTable {
 };
 constexpr ModSourceTable kModSources;
 
+// (port) The filter object a filter type plays: 0 FilterSQ, 1 the SVF (all its types), 2 the
+// CEM model.
+int filterOf(int type) { return type == FilterType::Sq80 ? 0 : (type == FilterType::Cem ? 2 : 1); }
+
 }  // namespace
 
 // ---------------------------------------------------------------- construction
@@ -77,6 +81,7 @@ Master::Master(VoiceModules& modules, int32_t sampleRate, const int32_t* overrid
     for (auto& pair : filters_)
         for (auto& f : pair) f.init(&filterTable_, 0.0f);
     for (auto& f : svfs_) f.init(&svfTable_, 0.0f);  // (port) FILT -> TYPE
+    for (auto& f : cems_) f.init(&cemTable_, 0.0f);
     setSampleRateInt(sampleRate);
     setControlRate(kDefaultControlRate);
     setVoices(kOriginalPlayableVoices, kOriginalFadeVoices);  // FUN_00463358(8, 8)
@@ -126,9 +131,11 @@ int32_t Master::setSampleRateInt(int32_t sr) {
         modules_.ampSetSampleRate(v, static_cast<float>(sr));
         for (auto& f : filters_[v]) f.setSampleRate(static_cast<float>(sr));
         svfs_[v].setSampleRate(static_cast<float>(sr));
+        cems_[v].setSampleRate(static_cast<float>(sr));
     }
     filterTable_.compute(static_cast<float>(sr));
     svfTable_.compute(static_cast<float>(sr));
+    cemTable_.compute(static_cast<float>(sr));
     setControlRate(controlRate_);
     reset();
     error_ = 0;
@@ -589,12 +596,14 @@ void Master::startVoice(int32_t slot, int32_t noteId, bool newNote, NoteRecord* 
         if (!legatoSteal) {
             filters_[slot][0].copyStateFrom(nullptr);
             svfs_[slot].copyStateFrom(nullptr);
+            cems_[slot].copyStateFrom(nullptr);
             filterType_[slot] = programFilterType(prog);
             modules_.ampStart(slot, -1);
         } else {
             const int other = vindex(*v.stolenFrom);
             filters_[slot][0].copyStateFrom(&filters_[other][0]);
             svfs_[slot].copyStateFrom(&svfs_[other]);
+            cems_[slot].copyStateFrom(&cems_[other]);
             filterType_[slot] = filterType_[other];
             modules_.ampStart(slot, other);
         }
@@ -967,22 +976,28 @@ void Master::controlUpdate(Voice& v) {
     const int32_t cutoff = s8(F[0]) * 2 + fmod / 64;
     flt.setParams(cutoff, s8(F[1]), v.tickCount == 0);
     // (port) FILT -> TYPE: the other types take the same cutoff and resonance. A voice that
-    // switches between FilterSQ and the SVF while it plays starts the one taking over clear
-    // and on its target. A voice that stays on type 0 runs only the original's code above.
+    // switches to another filter (FilterSQ, the SVF, the CEM model) while it plays starts the
+    // one taking over clear and on its target; switching between SVF types keeps its state. A
+    // voice that stays on type 0 runs only the original's code above.
     const int type = programFilterType(prog);
     const int was = filterType_[vi];
+    const bool takeOver = filterOf(type) != filterOf(was);
     if (type != was) {
         filterType_[vi] = type;
-        if (type == 0) {
+        if (takeOver && type == FilterType::Sq80) {
             flt.copyStateFrom(nullptr);
             flt.setParams(cutoff, s8(F[1]), true);
-        } else if (was == 0) {
+        } else if (takeOver && type == FilterType::Cem) {
+            cems_[vi].copyStateFrom(nullptr);
+        } else if (takeOver) {
             svfs_[vi].copyStateFrom(nullptr);
         }
     }
-    if (type != 0) {
+    if (type == FilterType::Cem) {
+        cems_[vi].setParams(cutoff, s8(F[1]), v.tickCount == 0 || takeOver);
+    } else if (type != FilterType::Sq80) {
         svfs_[vi].setType(type);
-        svfs_[vi].setParams(cutoff, s8(F[1]), v.tickCount == 0 || was == 0);
+        svfs_[vi].setParams(cutoff, s8(F[1]), v.tickCount == 0 || takeOver);
     }
 
     // Amp
@@ -1026,7 +1041,13 @@ bool Master::processVoice(Voice& v, float* acc) {
     }
     if (!modules_.envActive(vi, 3) && !(modules_.ampRampCount(vi) > -modules_.docReleaseSamples())) return true;
     double x = modules_.docRender(v.slot);
-    x = filterType_[vi] == 0 ? filters_[vi][0].process(x) : svfs_[vi].process(x);  // (port) FILT -> TYPE
+    // (port) FILT -> TYPE
+    if (filterType_[vi] == FilterType::Sq80)
+        x = filters_[vi][0].process(x);
+    else if (filterType_[vi] == FilterType::Cem)
+        x = cems_[vi].process(x);
+    else
+        x = svfs_[vi].process(x);
     bool finished = false;
     if (v.fading == 0) {
         modules_.ampProcess(vi, x, acc);

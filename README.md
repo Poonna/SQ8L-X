@@ -114,7 +114,14 @@ code and verified against the original plugin running inside an x86 emulator.
   the original's 4-pole lowpass, bit for bit; *LP2*, *BP2*, *HP2* and *NOTCH* are 2-pole
   lowpass, bandpass, highpass and band-reject filters and *LP4* a 4-pole (24 dB/oct)
   lowpass, all from a state variable filter after Andy Simper's (Cytomic) linear trapezoidal
-  design. They take the same CUT, RES, KEYB and FREQ modulation as the original filter, and
+  design. *CEM* is a nonlinear model of the SQ-80's actual filter chip, the Curtis CEM3379:
+  four saturating OTA stages with resonance feedback, solved without a unit delay in the
+  loop and run at twice the sample rate. It drives softly into distortion as the input gets
+  louder (about 1% for one oscillator at full level), its passband drops a little as RES
+  rises, and it self-oscillates, gently, at RES 29-31. Its calibration is a guess until it
+  is compared with a real SQ-80: like the hardware, whose resonance varies from chip to chip,
+  it is one plausible unit, not *the* SQ-80. It costs several times the CPU of the other
+  types. They all take the same CUT, RES, KEYB and FREQ modulation as the original filter, and
   sweep smoothly under fast modulation. The type belongs to the sound, so it is stored in the
   program and travels with it into banks, libraries and your project; every program that
   does not have it — anything made by the original SQ8L, any `.8XL` or bank file, any

@@ -190,8 +190,8 @@ void formatValue(Fmt f, int width, int v, std::string& s) {
         s = v != 0 ? "<-" : "->";
         break;
     case Fmt::FilterType: {  // (port) FILT -> TYPE, FilterType in FilterSvf.h
-        static const char* const kNames[] = {"SQ-80", "LP2  ", "BP2  ", "HP2  ", "NOTCH", "LP4  "};
-        s = unsigned(v) < 6 ? kNames[v] : "  ?  ";
+        static const char* const kNames[] = {"SQ-80", "LP2  ", "BP2  ", "HP2  ", "NOTCH", "LP4  ", "CEM  "};
+        s = unsigned(v) < 7 ? kNames[v] : "  ?  ";
         break;
     }
     }

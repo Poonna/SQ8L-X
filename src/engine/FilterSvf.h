@@ -1,7 +1,7 @@
-// (port) The filter types other than the original's (FILT -> TYPE, ofs::Filter::Type): a
-// linear trapezoidal state variable filter after Andy Simper, "Linear Trap Integrated State
-// Variable Filter" (Cytomic technical paper SvfLinearTrapOptimised2), written from the
-// published equations. Not in the original: type 0 is FilterSQ, untouched.
+// (port) The filter types other than the original's (FILT -> TYPE, ofs::Filter::Type), CEM
+// aside (FilterCem.h): a linear trapezoidal state variable filter after Andy Simper, "Linear
+// Trap Integrated State Variable Filter" (Cytomic technical paper SvfLinearTrapOptimised2),
+// written from the published equations. Not in the original: type 0 is FilterSQ, untouched.
 //
 // It takes what FilterSQ takes: the cutoff index 0..255 (the same filterUnitTables().cutoffHz
 // frequencies, with keyboard tracking and the FREQ modulation already folded in by the
@@ -23,7 +23,8 @@ constexpr int Bp2 = 2;    // 2-pole bandpass, 0 dB at the cutoff
 constexpr int Hp2 = 3;    // 2-pole highpass, 12 dB/oct
 constexpr int Notch = 4;  // 2-pole band reject
 constexpr int Lp4 = 5;    // 4-pole lowpass, 24 dB/oct: two cascaded SVFs
-constexpr int Count = 6;
+constexpr int Cem = 6;    // nonlinear model of the SQ-80's CEM3379 4-pole lowpass (FilterCem)
+constexpr int Count = 7;
 }  // namespace FilterType
 
 // Per sample rate: the integrator gain g = tan(pi fc / sr) of every cutoff index, with fc
