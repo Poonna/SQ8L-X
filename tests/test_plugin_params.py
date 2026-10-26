@@ -231,13 +231,13 @@ def main():
     pl.set(wave, 0.0)                               # a steady saw
     pl.set(freq, 64 / 127)                          # the cutoff in the middle
     rms = {}
-    for t, label in enumerate(("SQ-80", "LP2", "BP2", "HP2", "NOTCH", "LP4")):
-        pl.set(ftype, t / 5)
+    for t, label in enumerate(("SQ-80", "LP2", "BP2", "HP2", "NOTCH", "LP4", "CEM")):
+        pl.set(ftype, t / 6)
         shown = pl.display(ftype)
         rms[label] = pl.render_note()
-        check(shown == label and abs(pl.get(ftype) - t / 5) < 1e-6 and rms[label] > 1e-3,
+        check(shown == label and abs(pl.get(ftype) - t / 6) < 1e-6 and rms[label] > 1e-3,
               f"FILT TYPE {t} shows '{shown}', reads back and sounds (rms {rms[label]:.4f})")
-    check(len({round(v, 6) for v in rms.values()}) == 6, "the six types sound different")
+    check(len({round(v, 6) for v in rms.values()}) == 7, "the seven types sound different")
     before = pl.chunk()
     pl.set(ftype, 0.0)
     check(pl.chunk() != before, "the type travels in the chunk")

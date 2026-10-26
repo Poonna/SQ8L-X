@@ -349,7 +349,8 @@ FILT -> TYPE (`ofs::Filter::Type`, program byte 0x110, `programFilterType`, see
 before; 1..5 are `svfs_[v]` (`FilterSvf`, `src/engine/FilterSvf.{h,cpp}`), a linear
 trapezoidal state variable filter after Andy Simper (Cytomic, *SvfLinearTrapOptimised2*):
 LP2, BP2, HP2, NOTCH (2-pole) and LP4 (two cascaded 2-pole stages with the Butterworth Qs
-0.54 and 1.31, the resonance on the second).
+0.54 and 1.31, the resonance on the second); 6 is `cems_[v]` (`FilterCem`,
+`src/engine/FilterCem.{h,cpp}`), CEM, a nonlinear model of the SQ-80's CEM3379 (below).
 
 The SVF takes FilterSQ's inputs: the same cutoff index (`FREQ * 2` plus key tracking, the
 two FREQ modulation slots and CC74, computed once in `controlUpdate`) looked up in the same
@@ -363,11 +364,58 @@ instead of clicking. LP2, HP2 and LP4 take the original's resonance gain compens
 (`resoGain`); BP2 (normalised to 0 dB at the cutoff) and NOTCH never rise above unity. State
 is double precision, far from the denormal range whatever the input.
 
+### CEM (FilterCem)
+
+A model of the Curtis CEM3379's 4-pole lowpass, written for the port from published
+descriptions: Huovilainen's nonlinear ladder (DAFx-04) for the structure, Zavalishin's *The
+Art of VA Filter Design* for the discretisation, the CEM3379/CEM3320 datasheets for the
+input feed-forward, and MAME's `esq1_filters` (`src/mame/ensoniq/esq1.cpp`, BSD-3-Clause)
+for the linear limit and the resonance law; Joep Vanlier's Filther (MIT) served as a
+cross-check. No code was taken from any of them.
+
+Four OTA stages, each a trapezoidal integrator driven by the tanh of its input minus its own
+output, `y_i = s_i + g tanh(y_(i-1) - y_i)`, then `s_i = 2 y_i - s_i`; the first stage's input
+is the resonance node `u = (1 + a r) x - r y_4`. That loop has no unit delay in it
+(zero-delay feedback): it is solved per sample by Newton's method, starting from the
+stages' last currents, until a correction is below 1e-5 (at most 4 iterations, about 1.2-2.2
+on average). The Jacobian is lower bidiagonal plus the feedback term in its corner, so each
+correction is one forward pass and one division, by a number never below 1. tanh is
+Lambert's continued fraction to x^7/x^6, clamped at +-4.97 (within 2e-7). A small signal
+sees exactly MAME's `(1 + a r) / ((1 + s/wc)^4 + r)` with the feed-forward share a = 0.375
+(MAME has a = 1, a passband that never drops), so the passband falls by half (6 dB) at the
+oscillation threshold r = 4 instead of to a fifth.
+
+`CemTable` holds `g = tan(pi fc / (2 sr))` per index: the model runs at twice the sample
+rate, the input upsampled and the output decimated by a 31-tap Kaiser halfband (beta 7;
+-0.3 dB at 0.41 sr, -67 dB from 0.64 sr, 15.5 samples of delay). Cutoff and resonance come in
+as for the SVF (`cutoffHz`, clamped to 0.49 sr, the index smoothed per sample, g
+interpolated).
+
+Calibration, all of it a guess until measured against a real SQ-80:
+
+* RES: the SQ-80 shifts RES left by 2 into its 5 V DAC, so RES 31 is CV_Q = 2.43 V (Rainer
+  Buchty in sq8l-revival/SQ8L issue #41). r is linear in CV_Q, as in MAME, and reaches 4 at
+  the datasheet's minimum oscillation voltage, 2.2 V (2.8 V typical): this is a hot part,
+  self-oscillating at RES 29-31 and settling at a bounded level (about 0.4-0.7). A typical
+  part would not oscillate at all.
+* Drive: the input is scaled by 1.35 before the stages and the output divided by it, so
+  one oscillator at full level (amplitude 1) an octave below the cutoff comes out with about
+  1% THD, all three at full level about 3.5%.
+* No `resoGain`: the feed-forward already sets the passband level.
+
+It costs about 100-170 ns per voice-sample on a desktop x86-64 (the SVF a few ns), most of
+it the tanh and divisions of the Newton iterations.
+
+### Switching
+
 `filterType_[v]` is the type the voice plays. It is set at a note start (a legato steal
-inherits the stolen voice's type and SVF state, as FilterSQ copies its state) and followed
-at every control tick: switching between FilterSQ and the SVF while a note plays clears the
-one taking over and puts it on its target immediately; switching between SVF types keeps
-the state. FilterSQ still gets its `setParams` every tick whatever the type, and its
-`process` only runs for type 0, so a type 0 voice is untouched (243/243 regression
-renders). `render_check --filter-types` checks the response of each type at 44.1-384 kHz,
-resonance, fast modulation, smoothing and whole programs.
+inherits the stolen voice's type and SVF and CEM state, as FilterSQ copies its state) and
+followed at every control tick: switching to another filter object (FilterSQ, the SVF, the
+CEM model) while a note plays clears the one taking over and puts it on its target
+immediately; switching between SVF types keeps the state. FilterSQ still gets its
+`setParams` every tick whatever the type, and its `process` only runs for type 0, so a type
+0 voice is untouched (243/243 regression renders). `render_check --filter-types` checks the
+response of each SVF type at 44.1-384 kHz, resonance, fast modulation and smoothing; for CEM
+the small-signal response against the formula above, distortion against the level,
+self-oscillation (RES 31 rings at every cutoff, RES 27 dies away), fast modulation of a
+loud input and smoothing; and whole programs with every type.

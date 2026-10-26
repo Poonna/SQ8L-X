@@ -110,7 +110,7 @@ static const ParamSetup kParams_3_1[] = {
 static const ParamSetup kParams_4_0[] = {
     {1, "Filter cutoff frequency", -1, Fmt::None, PopText::None, true, 0, Change::None},  // FREQ
     {2, "Filter resonance (Q)", -1, Fmt::None, PopText::None, true, 0, Change::None},  // RES
-    {3, "Filter type (SQ-80=the original 4-pole lowpass, LP2/BP2/HP2=2-pole low/band/highpass, NOTCH=band reject, LP4=4-pole lowpass)", 245, Fmt::FilterType, PopText::None, true, 0, Change::None},  // (port) TYPE
+    {3, "Filter type (SQ-80=the original 4-pole lowpass, LP2/BP2/HP2=2-pole low/band/highpass, NOTCH=band reject, LP4=4-pole lowpass, CEM=nonlinear model of the SQ-80's CEM3379)", 245, Fmt::FilterType, PopText::None, true, 0, Change::None},  // (port) TYPE
     {4, "Keyboard follow (frequency is modulated by key position)", 239, Fmt::None, PopText::None, true, 0, Change::None},  // KEYBD
     {6, "Frequency modulation source 1", 241, Fmt::ModSource, PopText::ModSource, false, 0, Change::None},  // MOD1.SEL
     {8, "Frequency modulation amount 1", 242, Fmt::None, PopText::None, true, 0, Change::None},  // MOD1.AMT
@@ -362,7 +362,7 @@ const PageSetup kPages[kNumPages] = {
         {"OSC3", 3, 2, 38, 0, 0, 0, kParams_3_0, 9},
         {"DCA3", 3, 2, 49, 0, 1, 0, kParams_3_1, 6},
      }},
-    {"[FILT][CUT={0,FREQ,3,0,127}] [RES={1,RES,2,0,31}] [TYPE={2,TYPE,5,0,5}] [KEYB * {4,KEYBD,3,-63,+63}]\\&5 [MODS=] 2 [{6,MOD1.SEL,6,-1,145}] [*] [{7,MOD1.AMT,4,-127,+127}] 2 [{8,MOD2.SEL,6,-1,145}] [*] [{9,MOD2.AMT,4,-127,+127}]",
+    {"[FILT][CUT={0,FREQ,3,0,127}] [RES={1,RES,2,0,31}] [TYPE={2,TYPE,5,0,6}] [KEYB * {4,KEYBD,3,-63,+63}]\\&5 [MODS=] 2 [{6,MOD1.SEL,6,-1,145}] [*] [{7,MOD1.AMT,4,-127,+127}] 2 [{8,MOD2.SEL,6,-1,145}] [*] [{9,MOD2.AMT,4,-127,+127}]",
      1, {
         {"Filter", 4, 4, 237, 0, 0, 0, kParams_4_0, 8},
      }},

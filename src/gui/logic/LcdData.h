@@ -34,7 +34,7 @@ enum class Fmt : uint8_t {
     DcBlock,       // 0x461bac  SMART ON OFF
     Polyphony,     // (port) EMU -> VOICES: 0 = the original's 8, else the voices
     WaveDir,       // (port) oscillator wave direction: "->" forward, "<-" reverse
-    FilterType,    // (port) FILT -> TYPE: SQ-80 LP2 BP2 HP2 NOTCH LP4
+    FilterType,    // (port) FILT -> TYPE: SQ-80 LP2 BP2 HP2 NOTCH LP4 CEM
 };
 
 // Popup menu item texts (ClcdCtr_param +0x40).

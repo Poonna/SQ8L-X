@@ -24,8 +24,9 @@
 //       render by exactly its power of two, and the cut travels in the host chunk.
 //   sq8l_render_check --filter-types
 //       Filter types (FILT -> TYPE, a port addition): the response of each type at sample
-//       rates from 44.1 to 384 kHz, resonance, fast modulation, smoothing; then programs
-//       rendered with every type. Needs no files.
+//       rates from 44.1 to 384 kHz, resonance, fast modulation, smoothing; the CEM model's
+//       small-signal response, distortion, self-oscillation and bounds; then programs rendered
+//       with every type. Needs no files.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -37,6 +38,7 @@
 #include <string>
 #include <vector>
 
+#include "FilterCem.h"
 #include "FilterSQ.h"
 #include "FilterSvf.h"
 #include "Program.h"
@@ -575,18 +577,22 @@ int direction() {
     return bad || oneShotBad || progBad ? 1 : 0;
 }
 
-// (port) Filter types (FILT -> TYPE, ofs::Filter::Type, FilterSvf). The filter alone, at
-// sample rates from 44.1 to 384 kHz: each type passes and stops what it should a decade
-// either side of its cutoff, resonance raises the peak (and narrows the band), random fast
-// modulation of cutoff and resonance stays finite and bounded, and a cutoff step is
-// smoothed. Then whole programs: no factory program has the byte set, an out-of-range value
-// renders like type 0, every other type renders finite and non-silent and changes the
-// sound, HP2 is brighter than LP2 and LP4 darker, and switching the type while a note plays
-// stays finite. Needs no files.
+// (port) Filter types (FILT -> TYPE, ofs::Filter::Type, FilterSvf, FilterCem). The filter
+// alone, at sample rates from 44.1 to 384 kHz: each SVF type passes and stops what it should
+// a decade either side of its cutoff, resonance raises the peak (and narrows the band),
+// random fast modulation of cutoff and resonance stays finite and bounded, and a cutoff step
+// is smoothed. The CEM model: a small signal sees the linear 4-pole response
+// (1 + a r) / ((1 + s/wc)^4 + r) at every RES below oscillation, distortion is about 1% at
+// the nominal level and rises with the level, RES 31 self-oscillates (and RES 27 does not)
+// within bounds at every cutoff, fast modulation of a loud input stays finite and bounded,
+// and a cutoff step is smoothed. Then whole programs: no factory program has the byte set,
+// an out-of-range value renders like type 0, every other type renders finite and non-silent
+// and changes the sound, HP2 is brighter than LP2 and LP4 darker, CEM darker than LP2, and
+// switching the type while a note plays stays finite. Needs no files.
 int filterTypes() {
     using namespace sq8l;
     constexpr double kPi = 3.14159265358979323846;
-    const char* const names[FilterType::Count] = {"SQ-80", "LP2", "BP2", "HP2", "NOTCH", "LP4"};
+    const char* const names[FilterType::Count] = {"SQ-80", "LP2", "BP2", "HP2", "NOTCH", "LP4", "CEM"};
     int bad = 0;
     auto fail = [&](const char* what, int type, double sr, double v) {
         bad++;
@@ -623,7 +629,7 @@ int filterTypes() {
         SvfTable t;
         t.compute(sr);
         double lo[FilterType::Count] = {}, mid[FilterType::Count] = {}, hi[FilterType::Count] = {};
-        for (int type = 1; type < FilterType::Count; type++) {
+        for (int type = 1; type <= FilterType::Lp4; type++) {
             lo[type] = gain(t, sr, type, 0, fc / 10);
             mid[type] = gain(t, sr, type, 0, fc);
             hi[type] = gain(t, sr, type, 0, fc * 10);
@@ -656,7 +662,7 @@ int filterTypes() {
 
         // Fast random modulation (a jump every 16 samples, half of them unsmoothed) on white
         // noise: always finite, never more than a resonant peak.
-        for (int type = 1; type < Count; type++) {
+        for (int type = 1; type <= Lp4; type++) {
             FilterSvf flt;
             flt.init(&t, sr);
             flt.setType(type);
@@ -700,6 +706,147 @@ int filterTypes() {
     }
     std::printf("filter: 5 types at 6 sample rates: pass/stop bands, resonance, fast modulation, smoothing (%s)\n",
                 bad ? "FAILED" : "ok");
+
+    // The CEM model (FilterCem). Its calibration is a guess, so the bounds are loose: what is
+    // checked is the shape (the linear limit, distortion rising with the level, oscillation
+    // only at the top of RES) and that it stays finite and bounded.
+    int cemBad = 0;
+    auto cemFail = [&](const std::string& what, double sr, double v) {
+        cemBad++;
+        std::printf("BAD CEM %s at %.0f Hz: %g\n", what.c_str(), sr, v);
+    };
+    // A sine of amplitude `amp` at f through the CEM model at cutoff index c.
+    auto cemSine = [&](const CemTable& t, float sr, int c, int reso, double f, double amp) {
+        FilterCem flt;
+        flt.init(&t, sr);
+        flt.setParams(c, reso, true);
+        std::vector<double> y(static_cast<size_t>(sr / 2));
+        for (size_t i = 0; i < y.size(); i++) y[i] = flt.process(amp * std::sin(2 * kPi * f * double(i) / sr));
+        return y;
+    };
+    // Amplitude of harmonic h of f in the second half of y (Hann window).
+    auto harmonic = [&](const std::vector<double>& y, double sr, double f, int h) {
+        const size_t n0 = y.size() / 2, n = y.size() - n0;
+        double re = 0, im = 0;
+        for (size_t i = 0; i < n; i++) {
+            const double w = 0.5 - 0.5 * std::cos(2 * kPi * double(i) / double(n));
+            const double ph = 2 * kPi * f * h * double(n0 + i) / sr;
+            re += w * y[n0 + i] * std::cos(ph);
+            im -= w * y[n0 + i] * std::sin(ph);
+        }
+        return 4 * std::sqrt(re * re + im * im) / double(n);
+    };
+    // Total harmonic distortion, harmonics 2..9 below Nyquist.
+    auto thd = [&](const std::vector<double>& y, double sr, double f) {
+        double sum = 0;
+        for (int h = 2; h <= 9 && h * f < sr / 2; h++) {
+            const double a = harmonic(y, sr, f, h);
+            sum += a * a;
+        }
+        return std::sqrt(sum) / harmonic(y, sr, f, 1);
+    };
+    for (const float sr : {44100.0f, 48000.0f, 88200.0f, 96000.0f, 192000.0f, 384000.0f}) {
+        CemTable t;
+        t.compute(sr);
+
+        // A small signal (1e-3, far below the saturation) sees the linear response
+        // (1 + a r) / ((1 + s/wc)^4 + r): within 0.5 dB up to twice the cutoff, 1 dB at four
+        // times (the trapezoidal integrators are exact at the cutoff only).
+        for (const int reso : {0, 15, 25}) {
+            const double r = FilterCem::resonance(reso);
+            for (const double m : {0.1, 0.5, 1.0, 2.0, 4.0}) {
+                const double g = harmonic(cemSine(t, sr, c1k, reso, fc * m, 1e-3), sr, fc * m, 1) / 1e-3;
+                // (1 + jm)^4 = (1 - m^2)^2 - 4 m^2 + j 4m (1 - m^2)
+                const double re = (1 - m * m) * (1 - m * m) - 4 * m * m + r, im = 4 * m * (1 - m * m);
+                const double want = (1 + FilterCem::kFeedForward * r) / std::sqrt(re * re + im * im);
+                const double db = 20 * std::log10(g / want);
+                if (!(std::fabs(db) < (m < 3 ? 0.5 : 1.0)))
+                    cemFail("small signal at RES " + std::to_string(reso) + ", " + std::to_string(m) +
+                                " x the cutoff, dB off the linear response",
+                            sr, db);
+            }
+        }
+
+        // Distortion of a sine an octave below the cutoff (RES 0): next to none at 0.01, about
+        // 1% at the nominal level (1, one oscillator at full level), rising with the level.
+        double d[4];
+        const double amps[4] = {0.01, 0.25, 1.0, 3.0};
+        for (int k = 0; k < 4; k++) d[k] = thd(cemSine(t, sr, c1k, 0, fc / 2, amps[k]), sr, fc / 2);
+        if (!(d[0] < 1e-4)) cemFail("THD at level 0.01", sr, d[0]);
+        if (!(d[2] > 0.005 && d[2] < 0.02)) cemFail("THD at the nominal level", sr, d[2]);
+        if (!(d[0] < d[1] && d[1] < d[2] && d[2] < d[3])) cemFail("THD does not rise with the level, at 3", sr, d[3]);
+        if (sr == 44100.0f || sr == 384000.0f)
+            std::printf("  CEM at %.0f Hz: THD %.4f%% / %.3f%% / %.2f%% / %.2f%% at level 0.01 / 0.25 / 1 / 3\n", sr,
+                        100 * d[0], 100 * d[1], 100 * d[2], 100 * d[3]);
+
+        // Self-oscillation: a 1 ms pulse, then silence for the rest of 1 s. RES 31 still rings in
+        // the last quarter at every cutoff, within bounds; RES 27 has died away.
+        auto ring = [&](int c, int reso) {
+            FilterCem flt;
+            flt.init(&t, sr);
+            flt.setParams(c, reso, true);
+            const int n = static_cast<int>(sr), pulse = static_cast<int>(sr / 1000);
+            double peak = 0;
+            for (int i = 0; i < n; i++) {
+                const double y = flt.process(i < pulse ? 0.1 : 0.0);
+                if (!std::isfinite(y)) return static_cast<double>(INFINITY);
+                if (i >= n * 3 / 4) peak = std::max(peak, std::fabs(y));
+            }
+            return peak;
+        };
+        for (const int c : {0, c1k, 200, 255}) {
+            const double p = ring(c, 31);
+            if (!(p > 0.05 && p < 2))
+                cemFail("self-oscillation at RES 31, cutoff " + std::to_string(c) + ", peak", sr, p);
+        }
+        const double quiet = ring(c1k, 27);
+        if (!(quiet < 1e-4)) cemFail("RES 27 still ringing after 1 s, peak", sr, quiet);
+
+        // Fast random modulation (a jump every 16 samples, half of them unsmoothed) on white
+        // noise at three times the nominal level (all three oscillators at full level): always
+        // finite, and bounded.
+        {
+            FilterCem flt;
+            flt.init(&t, sr);
+            double peak = 0;
+            for (int i = 0; i < static_cast<int>(sr); i++) {
+                if (i % 16 == 0) {
+                    const int32_t c = int32_t(next() % 256), r = int32_t(next() % 32);
+                    flt.setParams(c, r, (next() & 1) != 0);
+                }
+                const double y = flt.process(((next() / 4294967295.0) * 2 - 1) * 3);
+                if (!std::isfinite(y)) {
+                    peak = INFINITY;
+                    break;
+                }
+                peak = std::max(peak, std::fabs(y));
+            }
+            if (!(peak < 20)) cemFail("under fast modulation, peak", sr, peak);
+        }
+
+        // A cutoff step from index 0 to 255 under a 2 kHz sine, as for the SVF, the window
+        // after the resamplers' delay (15.5 samples).
+        {
+            double first[2] = {}, last[2] = {};
+            for (int smooth = 0; smooth < 2; smooth++) {
+                FilterCem flt;
+                flt.init(&t, sr);
+                const int settle = static_cast<int>(sr / 2), after = static_cast<int>(sr / 10);
+                for (int i = 0; i < settle + after; i++) {
+                    if (i == settle) flt.setParams(255, 0, smooth == 0);
+                    const double y = flt.process(std::sin(2 * kPi * 2000 * i / sr));
+                    if (i >= settle + 20 && i < settle + 30) first[smooth] = std::max(first[smooth], std::fabs(y));
+                    if (i == settle + after - 1) last[smooth] = y;
+                }
+            }
+            if (!(first[1] < first[0] / 4)) cemFail("cutoff step not smoothed (20..30 samples after)", sr, first[1]);
+            if (std::fabs(last[0] - last[1]) > 1e-6) cemFail("smoothed step does not settle", sr, last[1]);
+        }
+    }
+    std::printf("CEM at 6 sample rates: small-signal response, distortion, self-oscillation, fast modulation, "
+                "smoothing (%s)\n",
+                cemBad ? "FAILED" : "ok");
+    bad += cemBad;
 
     // Whole programs.
     int progBad = 0, set = 0;
@@ -756,8 +903,8 @@ int filterTypes() {
     };
 
     // A sawtooth (INIT) through each type with the cutoff in the middle (FREQ 64, ~2.2 kHz,
-    // a C4 note): every type audible, and LP4 darker than LP2, darker than BP2, darker than
-    // HP2.
+    // a C4 note): every type audible, LP4 darker than LP2, darker than BP2, darker than HP2,
+    // and CEM (4 poles) darker than LP2.
     {
         double level[FilterType::Count], bright[FilterType::Count];
         for (int type = 0; type < FilterType::Count; type++) {
@@ -775,6 +922,10 @@ int filterTypes() {
         if (!(bright[Lp4] < bright[Lp2] && bright[Lp2] < bright[Bp2] && bright[Bp2] < bright[Hp2])) {
             progBad++;
             std::printf("BAD INIT: brightness not LP4 < LP2 < BP2 < HP2\n");
+        }
+        if (!(bright[Cem] < bright[Lp2])) {
+            progBad++;
+            std::printf("BAD INIT: CEM not darker than LP2\n");
         }
     }
 
@@ -803,10 +954,12 @@ int filterTypes() {
             }
             if (hashLR(L[type], R[type]) != hashLR(L[0], R[0])) changed[type]++;
         }
-        // SQ-80 -> LP4 -> BP2 -> SQ-80
+        // SQ-80 -> LP4 -> BP2 -> CEM -> LP2 -> SQ-80
         std::vector<int> seq(86, FilterType::Sq80);
         for (int b = 20; b < 40; b++) seq[size_t(b)] = FilterType::Lp4;
-        for (int b = 40; b < 60; b++) seq[size_t(b)] = FilterType::Bp2;
+        for (int b = 40; b < 55; b++) seq[size_t(b)] = FilterType::Bp2;
+        for (int b = 55; b < 70; b++) seq[size_t(b)] = FilterType::Cem;
+        for (int b = 70; b < 78; b++) seq[size_t(b)] = FilterType::Lp2;
         std::vector<float> Ls, Rs;
         renderProg(prog, seq, Ls, Rs);
         if (!finite(Ls) || !finite(Rs)) {
