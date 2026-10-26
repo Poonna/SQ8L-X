@@ -29,7 +29,7 @@ AudioUnit open(const char* path) {
     auto factory = reinterpret_cast<AudioComponentFactoryFunction>(
         CFBundleGetFunctionPointerForName(bundle, CFSTR("PluginAUFactory")));
     if (factory == nullptr) return nullptr;
-    AudioComponentDescription desc{'aumu', 'SQ8X', 'SQ8L', 0, 0};
+    AudioComponentDescription desc{'aumu', 'S8LX', 'SQ8L', 0, 0};
     AudioComponent comp = AudioComponentRegister(&desc, CFSTR("sq8l_au_check: SQ8L-X"), 1, factory);
     AudioUnit au = nullptr;
     if (comp == nullptr || AudioComponentInstanceNew(comp, &au) != noErr) return nullptr;

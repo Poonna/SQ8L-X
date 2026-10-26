@@ -34,7 +34,7 @@ code and verified against the original plugin running inside an x86 emulator.
   knobs, a tidier OPTIONS menu.
 - **Compatibility.** Same 512 programs and the same chunk format as the original. Library
   files (`.8XL`), bank files and SQ-80/ESQ-1 SysEx are read and written exactly like the
-  original. SQ8L-X has its own plug-in IDs (VST2 `SQ8X`, AU subtype `SQ8X`, its own VST3,
+  original. SQ8L-X has its own plug-in IDs (VST2 `S8LX`, AU subtype `S8LX`, its own VST3,
   CLAP and LV2 IDs), so a host sees it as a different plug-in: a project saved with the
   original SQ8L or the SQ8L port keeps using that plug-in and does not open in SQ8L-X. To
   bring a sound across, save it to the library or a bank there and load it in SQ8L-X.

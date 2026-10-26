@@ -49,7 +49,7 @@ jobs:
           mkdir -p ~/Library/Audio/Plug-Ins/Components
           cp -R pkg/SQ8L-X/SQ8L-X.component ~/Library/Audio/Plug-Ins/Components/
           killall -9 AudioComponentRegistrar || true
-          auval -v aumu SQ8X SQ8L
+          auval -v aumu S8LX SQ8L
       - name: Audio Unit presets and state as a host drives them
         run: MallocScribble=1 ./build/sq8l_au_check pkg/SQ8L-X/SQ8L-X.component
       - uses: actions/upload-artifact@v7

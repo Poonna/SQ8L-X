@@ -1,5 +1,5 @@
-// SQ8L-X: plugin identity. Its own name and IDs (VST2 'SQ8X', VST3, CLAP, LV2, AU subtype
-// 'SQ8X'), so it installs next to the original SQ8L and the SQ8L port, and hosts tell them
+// SQ8L-X: plugin identity. Its own name and IDs (VST2 'S8LX', VST3, CLAP, LV2, AU subtype
+// 'S8LX'), so it installs next to the original SQ8L and the SQ8L port, and hosts tell them
 // apart. The chunk format is the original's: programs, banks and libraries move between them.
 #pragma once
 
@@ -8,7 +8,7 @@
 #define DISTRHO_PLUGIN_URI "urn:sq8l-x:sq8l-x"
 #define DISTRHO_PLUGIN_CLAP_ID "sq8l-x.sq8l-x"
 #define DISTRHO_PLUGIN_BRAND_ID SQ8L
-#define DISTRHO_PLUGIN_UNIQUE_ID SQ8X
+#define DISTRHO_PLUGIN_UNIQUE_ID S8LX
 
 #define DISTRHO_PLUGIN_HAS_UI 1
 #define DISTRHO_PLUGIN_WANT_DIRECT_ACCESS 1
