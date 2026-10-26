@@ -189,6 +189,11 @@ void formatValue(Fmt f, int width, int v, std::string& s) {
         // cell, pointing away), so the arrow always leads with the bar it closes on.
         s = v != 0 ? "<-" : "->";
         break;
+    case Fmt::FilterType: {  // (port) FILT -> TYPE, FilterType in FilterSvf.h
+        static const char* const kNames[] = {"SQ-80", "LP2  ", "BP2  ", "HP2  ", "NOTCH", "LP4  "};
+        s = unsigned(v) < 6 ? kNames[v] : "  ?  ";
+        break;
+    }
     }
 }
 

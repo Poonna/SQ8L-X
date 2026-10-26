@@ -488,6 +488,38 @@ def main():
     check(row[13:19].strip() != "" and row[21:27].strip() != "" and row[29:35].strip() != "",
           f"OSC1-3 keeps the wave columns under the knobs: {row[:44]!r}")
 
+    # 6b. FILT -> TYPE: the filter type (program byte 0x110), in the 11 columns the page left
+    # empty between RES and KEYB. It is an item of its own, so every item after it moved up
+    # by one and must still reach its own parameter.
+    print("Filter type:")
+    FILT_PAGE, FILT_SUB = 4, 0
+    CUT, RES, TYPE, KEYB, MOD1_SEL = 1, 2, 3, 4, 6  # item indices
+    params = ed.pages()[FILT_PAGE]["subs"][FILT_SUB]["params"]
+    found = [p for p in params if p["name"] == "TYPE"]
+    p = found[0] if found else {}
+    check(len(found) == 1 and p.get("knob") == 2 and p.get("x") == 20 and p.get("y") == 0,
+          f"TYPE between RES and KEYB: knob {p.get('knob')}, column {p.get('x')}, row {p.get('y')}")
+    check(p.get("min") == 0 and p.get("max") == 5 and p.get("paramIndex") == 245 and p.get("width") == 5,
+          f"TYPE is 0..5 and writes program byte 0x110 (parameter {p.get('paramIndex')})")
+    L.sq8l_gl_ctr(ed.v, 0, FILT_PAGE, FILT_SUB)
+    ed.idle()
+    row = ed.lcd_row(0)
+    check(row[20:30] == "TYPE=SQ-80" and ed.program_byte(0x110) == 0,
+          f"a program of the original has the SQ-80 filter: {row[20:30]!r}")
+    check(row[5:9] == "CUT=" and row[13:17] == "RES=" and row[31:37] == "KEYB *",
+          f"CUT, RES and KEYB keep their columns: {row[:44]!r}")
+    for value, name in ((1, "LP2  "), (2, "BP2  "), (3, "HP2  "), (4, "NOTCH"), (5, "LP4  "), (0, "SQ-80")):
+        L.sq8l_gl_ctr(ed.v, 1, TYPE, value)
+        ed.idle()
+        shown = ed.lcd_row(0)[25:30]
+        check(shown == name and ed.program_byte(0x110) == value,
+              f"type {value}: display {shown!r}, program byte {ed.program_byte(0x110)}")
+    for item, value, off in ((CUT, 77, 0x106), (RES, 9, 0x107), (KEYB, 21, 0x108), (MOD1_SEL, 5, 0x10A)):
+        L.sq8l_gl_ctr(ed.v, 1, item, value)
+        ed.idle()
+        check(ed.program_byte(off) == value and ed.program_byte(0x110) == 0,
+              f"FILT item {item} still writes program byte {off:#x} ({ed.program_byte(off)})")
+
     # 7. the knobs a page does not use are inactive (issue #24: drawn faded)
     print("Inactive knobs:")
     for page, sub in ((EMU_PAGE, EMU_SUB), (0, 0)):

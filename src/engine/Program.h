@@ -112,6 +112,12 @@ constexpr size_t Keybd = 0x02;  // s8 -63..+63 (SQ-80 0..63)
 constexpr size_t Mod1 = 0x04;   // slot (amount -127..127)
 constexpr size_t Mod2 = 0x07;   // slot
 constexpr size_t Mod3 = 0x0b;   // slot (not exposed by the GUI)
+// (port) filter type, FILT -> TYPE (FilterType in FilterSvf.h), 0 = the original's 4-pole
+// lowpass. A byte nothing ever writes: not the original (no page, INIT zeroes it, its file
+// and SysEx code never reach it), not convertOldProgram (which fills +0x03 but stops at the
+// MOD2 slot), so every existing program reads as 0. Same approach as ofs::Polyphony; see
+// docs/modules/program.md.
+constexpr size_t Type = 0x0a;
 }  // namespace Filter
 
 constexpr size_t Block122 = 0x122;  // 16 bytes, 2 slots at +2/+5, filled only by old-format import
@@ -157,6 +163,15 @@ inline int programPolyphony(const uint8_t* program) {
     const int n = static_cast<int>(program[ofs::Polyphony]);
     if (n < kMinPlayableVoices || n > kMaxPlayableVoices) return kOriginalPlayableVoices;
     return n;
+}
+
+// (port) Filter type of a program record (ofs::Filter::Type of filter 1): 0 = the original's
+// filter, also for a missing record and for a value no version of the port writes.
+constexpr int kNumFilterTypes = 6;  // FilterType::Count
+inline int programFilterType(const uint8_t* program) {
+    if (!program) return 0;
+    const int t = static_cast<int>(program[ofs::filter(0) + ofs::Filter::Type]);
+    return t < kNumFilterTypes ? t : 0;
 }
 
 // The program record. Plain bytes; all multi-byte fields are little endian and unaligned.
