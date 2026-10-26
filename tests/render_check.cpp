@@ -1114,6 +1114,65 @@ int filterFm() {
     }
     std::printf("filter FM: %d types at 5 sample rates: table monotonic, no FM = process(), full swing bounded (%s)\n",
                 int(FilterType::Count), bad ? "FAILED" : "ok");
+
+    // The SQ-80 filter's FM path runs its stages as TPT one-poles (FilterSQ.cpp). Held still, it
+    // is the original filter: processFm with a constant offset of n steps against process() at
+    // the cutoff n steps up, once the smoothing has settled; and process() -> processFm (an
+    // offset too small to move anything) -> process() hands the state over without a seam.
+    // Equal up to rounding (the original rounds every stage to float, the TPT state is double).
+    {
+        int tptBad = 0;
+        double worstStatic = 0, worstHandover = 0;
+        for (const float sr : {44100.0f, 96000.0f, 192000.0f}) {
+            auto tq = std::make_unique<FilterTable>();
+            tq->compute(sr);
+            for (const int cut : {20, 80, 128, 180, 230}) {
+                for (const int reso : {0, 12, 24, 30}) {
+                    const int n = 7;
+                    FilterSQ moved, orig;
+                    moved.init(tq.get(), sr);
+                    orig.init(tq.get(), sr);
+                    moved.setParams(cut - n, reso, true);
+                    orig.setParams(cut, reso, true);
+                    double diff = 0, peak = 0;
+                    for (int i = 0; i < 30000; i++) {
+                        const double x = noise() * 0.25;
+                        const double a = moved.processFm(x, double(n)), b = orig.process(x);
+                        if (i >= 2000) diff = std::max(diff, std::fabs(a - b)), peak = std::max(peak, std::fabs(b));
+                    }
+                    worstStatic = std::max(worstStatic, diff / (peak + 1e-9));
+
+                    FilterSQ hand, ref;
+                    hand.init(tq.get(), sr);
+                    ref.init(tq.get(), sr);
+                    hand.setParams(cut, reso, true);
+                    ref.setParams(cut, reso, true);
+                    double hdiff = 0, hpeak = 0;
+                    for (int i = 0; i < 30000; i++) {
+                        const double x = noise() * 0.25;
+                        const bool fmOn = i >= 10000 && i < 20000;
+                        const double a = fmOn ? hand.processFm(x, 1e-12) : hand.process(x), b = ref.process(x);
+                        hdiff = std::max(hdiff, std::fabs(a - b));
+                        hpeak = std::max(hpeak, std::fabs(b));
+                    }
+                    worstHandover = std::max(worstHandover, hdiff / (hpeak + 1e-9));
+                }
+            }
+        }
+        if (!(worstStatic < 1e-4)) {
+            tptBad++;
+            std::printf("BAD SQ-80 TPT path: a constant offset differs from the original at that cutoff (%.2e)\n",
+                        worstStatic);
+        }
+        if (!(worstHandover < 1e-4)) {
+            tptBad++;
+            std::printf("BAD SQ-80 TPT path: handing over to and from process() leaves a seam (%.2e)\n", worstHandover);
+        }
+        std::printf("SQ-80 FM path (TPT stages): held still = the original at the moved cutoff (worst %.1e of the "
+                    "peak), handover to and from process() seamless (worst %.1e) (%s)\n",
+                    worstStatic, worstHandover, tptBad ? "FAILED" : "ok");
+        bad += tptBad;
+    }
     for (int type = 0; type < FilterType::Count; type++)
         std::printf("  %-5s worst full-swing peak on full-scale noise: %.2f\n", names[type], worstPeak[type]);
 

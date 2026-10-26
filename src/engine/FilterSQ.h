@@ -60,10 +60,16 @@ public:
     double process(double x);
     // (port) One sample with the cutoff moved by `fm` cutoff index steps (audio-rate filter FM,
     // FILT -> FM SRC). Not in the original: the master calls it only while FM SRC is not OFF,
-    // so a voice without filter FM runs process() above and nothing else. fm = 0 is process()
-    // exactly while the stages stay below the soft limit that keeps deep FM bounded (32, see
-    // FilterSQ.cpp).
+    // so a voice without filter FM runs process() above and nothing else. The same filter with
+    // its four stages as TPT (zero-delay, trapezoidal) one-poles, which is what they are, see
+    // FilterSQ.cpp. Until the first sample with fm != 0 it is process(), bit for bit.
     double processFm(double x, double fm);
+
+    // (port) The TPT integrator states of processFm's stages, and whether they hold the
+    // filter's state (processFm ran last) or stage[] does alone (process ran last, or nothing).
+    // Outside the original's object, like the other port additions.
+    double tpt[4] = {};
+    bool tptLive = false;
 
 private:
     void computeSmoothing();       // FUN_0045f120

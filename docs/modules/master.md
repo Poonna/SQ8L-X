@@ -456,12 +456,23 @@ moves, which matters when the modulator is the carrier's own oscillator; the New
 copes with g changing every step. `FilterSQ::processFm` keeps the original's smoothed p, k
 and g and adds to them the difference the table makes between the target cutoff and the
 moved one (interpolated, pole clamped to the column's range, feedback likewise; the column
-runs monotonically, which the check verifies). Being a linear ladder, the SQ-80 filter can
-pump energy in under fast, deep FM near self-oscillation and run away, so its FM path
-soft-limits every stage above 32 (the unmodulated stages reach about 10 to 15 on full-scale
-noise through unsmoothed jumps of cutoff and resonance, rarely more), which bounds the output
-near 33. With no FM every `processFm` is its `process` bit for bit (FilterSQ's below that
-limit). `render_check --filter-fm` checks all this, plus sidebands around a carrier,
+runs monotonically, which the check verifies). It runs the four stages as TPT one-poles
+(`FilterSQ::tpt`): each of the original's stages, `y = g (x + x') - p y'` with
+`g = (1 + p) / 2`, is the bilinear one-pole, and so is a TPT one-pole of the same g, so with
+the settings held still it is the original filter (the resonance loop keeps its one-sample
+delay, `stage[4]`, around which the tables are tuned). Only under modulation do they differ:
+the TPT integrators keep their state through coefficient changes, so fast, deep FM pumps far
+less energy into the ladder. On the first sample with an offset the integrator states are
+derived from `stage[]` (`s = (g x' - p y') / (1 - g)`), and every sample still writes
+`stage[]`, so `process` and `processFm` hand over to each other without a seam; until that
+first offset `processFm` is `process`. Being linear, the ladder can still run away near
+self-oscillation, so the FM path soft-limits every stage above 32 (the unmodulated stages
+reach about 10 to 15 on full-scale noise through unsmoothed jumps of cutoff and resonance,
+rarely more), which bounds the output near 33; `process`, which every voice without filter FM
+runs, has no limit and is the original's arithmetic. With no FM every `processFm` is its
+`process` bit for bit. `render_check --filter-fm` checks all this (for the SQ-80 type also
+that a constant offset is the original at the moved cutoff and that the handover leaves no
+seam, both to rounding), plus sidebands around a carrier,
 full-swing FM at 44.1-384 kHz on every type, and whole programs (OFF / amount 0 / unknown
 source / disabled oscillator render like OFF; extremes stay finite; every voice of a chord
 follows).

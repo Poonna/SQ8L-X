@@ -148,8 +148,12 @@ void FilterSQ::computeSmoothing() {
 void FilterSQ::copyStateFrom(const FilterSQ* o) {
     if (!o) {
         for (float& s : stage) s = 0;
+        for (double& s : tpt) s = 0;
+        tptLive = false;
         return;
     }
+    for (int i = 0; i < 4; i++) tpt[i] = o->tpt[i];  // (port) processFm's stages
+    tptLive = o->tptLive;
     gain = o->gain;
     keyParam = o->keyParam;
     for (int i = 0; i < 5; i++) stage[i] = o->stage[i];
@@ -225,6 +229,7 @@ double FilterSQ::process(double x) {
     p = sgl(static_cast<double>(p) * pA + pTarget);
     k = sgl(static_cast<double>(k) * kA + kTarget);
     gain = sgl(static_cast<double>(gain) * gainA + gainTarget);
+    tptLive = false;  // (port) stage[] holds the state now, see processFm
     return out;
 }
 
@@ -236,12 +241,31 @@ double FilterSQ::process(double x) {
 // feedback to the range of the same table column, which render_check --filter-fm checks
 // runs monotonically with the pole.
 //
-// Moved fast and far near self-oscillation, the ladder pumps energy in (parametric
-// resonance) and, being linear, runs away. A soft limit on every stage keeps it bounded, as
-// the clipping of an analog ladder does. It starts at 32: without FM the stages reach about
-// 10 to 15 on full-scale noise through unsmoothed jumps of cutoff and resonance (rarely more),
-// so for program material this is the original's arithmetic, and the output stays under
-// about 33 whatever the FM does.
+// The stages run as TPT one-poles. Each of the original's stages, y = g (x + x') - p y' with
+// g = (1 + p) / 2, is the bilinear one-pole lowpass, and so is a TPT one-pole of the same g:
+// v = g (x - s), y = v + s, s = y + v. With the settings held still the two are the same
+// filter, sample for sample up to rounding; the resonance loop keeps the original's one-sample
+// delay (stage[4], the last sample's output), which with the tables tuned around it is the
+// filter's character, so the response is the original's. They differ only while the cutoff
+// moves: the original stage recomputes its next sample from its last input and output with
+// the new coefficients, the TPT stage keeps its integrator's state as a capacitor keeps its
+// charge, and so goes through fast, deep FM with far less parametric pumping. Measured with
+// the soft limit below on both, square-wave and random FM at RES 24-31 on full-scale noise
+// (180 cases at 48 kHz): the share of samples above 8 falls from 5.2% to 0.4% at +-30 steps
+// and from 47% to 16% at the full +-126; the peaks still reach the limit about as often.
+//
+// The handover is exact: on the first sample with fm != 0 the integrator states are
+// derived from stage[], s = (g x' - p y') / (1 - g), which makes that sample the one process()
+// would compute; every sample also writes stage[] as process() does, so process() takes over
+// again where processFm left off. Until then (fm 0: FM AMT 0, or an oscillator that is off)
+// processFm is process(), so those render exactly like FM SRC OFF.
+//
+// Moved fast and far near self-oscillation, a linear ladder can still pump energy in and run
+// away, the TPT one less often than the original. A soft limit on every stage keeps it
+// bounded, as the clipping of an analog ladder does. It starts at 32: without FM the stages
+// reach about 10 to 15 on full-scale noise through unsmoothed jumps of cutoff and resonance
+// (rarely more), and the output stays under about 33 whatever the FM does. Only processFm
+// has it: process(), which every voice without filter FM runs, is the original's arithmetic.
 namespace {
 constexpr double kFmLimit = 32.0;
 double fmLimit(double y) {
@@ -250,6 +274,7 @@ double fmLimit(double y) {
 }  // namespace
 
 double FilterSQ::processFm(double x, double fm) {
+    if (fm == 0.0 && !tptLive) return process(x);
     double pe = p, ke = k, ge = g;
     if (fm != 0.0) {
         const float(*col)[2] = table->entry[reso];
@@ -266,21 +291,24 @@ double FilterSQ::processFm(double x, double fm) {
         ke = std::clamp(ke + (km - col[cutoff][1]), std::min(k0, k1), std::max(k0, k1));
         ge = ge + (pe - p) * half;
     }
+    if (!tptLive) {
+        // Take over from process(): the state of each stage in TPT form, from its last input
+        // and output (stage[i], stage[i + 1]) and this sample's coefficients. 1 - g = (1 - p) / 2
+        // is above 0 for every pole the table holds.
+        const double d = 1.0 - ge;
+        for (int i = 0; i < 4; i++)
+            tpt[i] = (static_cast<double>(stage[i]) * ge - static_cast<double>(stage[i + 1]) * pe) / d;
+        tptLive = true;
+    }
     const double t = x * (ke * resoComp + 1.0f);
-    const double a4 = static_cast<double>(stage[3]) * ge - static_cast<double>(stage[4]) * pe;
-    const double a3 = static_cast<double>(stage[2]) * ge - static_cast<double>(stage[3]) * pe;
-    const double a2 = static_cast<double>(stage[1]) * ge - static_cast<double>(stage[2]) * pe;
-    const double a1 = static_cast<double>(stage[0]) * ge - static_cast<double>(stage[1]) * pe;
     double y = fmLimit(t - static_cast<double>(stage[4]) * ke);
     stage[0] = sgl(y);
-    y = fmLimit(y * ge + a1);
-    stage[1] = sgl(y);
-    y = fmLimit(y * ge + a2);
-    stage[2] = sgl(y);
-    y = fmLimit(y * ge + a3);
-    stage[3] = sgl(y);
-    y = fmLimit(y * ge + a4);
-    stage[4] = sgl(y);
+    for (int i = 0; i < 4; i++) {
+        const double v = ge * (y - tpt[i]);
+        y = fmLimit(v + tpt[i]);
+        tpt[i] = 2.0 * y - tpt[i];  // y + v, with y as the limit left it
+        stage[i + 1] = sgl(y);
+    }
     const double out = y * gain;
     g = sgl((1.0f + static_cast<double>(p)) * half);
     p = sgl(static_cast<double>(p) * pA + pTarget);
