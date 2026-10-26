@@ -85,6 +85,8 @@ const Halfband& halfband() {
 
 }  // namespace
 
+const double* FilterCem::halfbandTaps() { return halfband().c; }
+
 void CemTable::compute(float sampleRate) {
     const FilterUnitTables& u = filterUnitTables();
     for (int c = 0; c < 256; c++) {

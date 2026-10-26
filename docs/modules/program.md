@@ -262,7 +262,7 @@ still be preserved.
 | 0x10c | 0x0ea | 242 | s8 | FILTER MOD1 amount | -127..+127 | 0 | SQ-80 signed 7 bit, not halved |
 | 0x10d | 0x0eb | 243 | s16 | FILTER MOD2 source | -1..145 | -1 |  |
 | 0x10f | 0x0ed | 244 | s8 | FILTER MOD2 amount | -127..+127 | 0 |  |
-| 0x110 | 0x0ee | 245 | s8 | FILTER TYPE (port addition) | 0..6 | 0 | FILT page; 0 (the original, every import) = the SQ-80 filter, see below |
+| 0x110 | 0x0ee | 245 | s8 | FILTER TYPE (port addition) | 0..11 | 0 | FILT page; 0 (the original, every import) = the SQ-80 filter, see below |
 | 0x111 | 0x0ef | 246 | s16 | FILTER MOD3 source (not in the GUI) |  | -1 |  |
 | 0x113 | 0x0f1 | 247 | s8 | FILTER MOD3 amount |  | 0 |  |
 | 0x114 | 0x0f2 | 248 | s8 | filter 2 (unused) FREQ | 0..127 | 127 |  |
@@ -538,7 +538,8 @@ of a program: it travels in two spare bytes of the host chunk header (`library.m
 The filter a voice plays (FILT page, `ofs::Filter::Type`, parameter 245,
 `programFilterType`): 0 **SQ-80**, the original's 4-pole lowpass (`FilterSQ`); 1 LP2, 2 BP2,
 3 HP2, 4 NOTCH, 5 LP4, the port's state variable filter (`FilterSvf`); 6 CEM, the port's
-nonlinear CEM3379 model (`FilterCem`, see [master.md](master.md#filter-types-port-addition)).
+nonlinear CEM3379 model (`FilterCem`, see [master.md](master.md#filter-types-port-addition));
+7 MOOG, 8 MS-20, 9 SSM, 10 WASP, 11 303, the models translated from Filther (`FilterVa`).
 The values are stored in programs, so new types are only ever appended.
 
 The byte sits in filter 1's own block (+0x0a), between the MOD2 slot and the MOD3 slot, and
@@ -555,7 +556,7 @@ reads as 0 and keeps the original's filter:
   other spare byte of the block, +0x03 (0x109), was not used: the conversion fills it from
   the old record.
 
-A value outside 0..6 is treated as 0 (no version of the port writes one). The SysEx export
+A value outside 0..11 is treated as 0 (no version of the port writes one). The SysEx export
 cannot carry the type, like everything else outside the SQ-80's 204 nybbles. With type 0
 (every existing program) the render is bit-exact (243/243 regression renders).
 

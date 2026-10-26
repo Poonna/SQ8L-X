@@ -499,8 +499,8 @@ def main():
     p = found[0] if found else {}
     check(len(found) == 1 and p.get("knob") == 2 and p.get("x") == 20 and p.get("y") == 0,
           f"TYPE between RES and KEYB: knob {p.get('knob')}, column {p.get('x')}, row {p.get('y')}")
-    check(p.get("min") == 0 and p.get("max") == 6 and p.get("paramIndex") == 245 and p.get("width") == 5,
-          f"TYPE is 0..6 and writes program byte 0x110 (parameter {p.get('paramIndex')})")
+    check(p.get("min") == 0 and p.get("max") == 11 and p.get("paramIndex") == 245 and p.get("width") == 5,
+          f"TYPE is 0..11 and writes program byte 0x110 (parameter {p.get('paramIndex')})")
     L.sq8l_gl_ctr(ed.v, 0, FILT_PAGE, FILT_SUB)
     ed.idle()
     row = ed.lcd_row(0)
@@ -509,7 +509,7 @@ def main():
     check(row[5:9] == "CUT=" and row[13:17] == "RES=" and row[31:37] == "KEYB *",
           f"CUT, RES and KEYB keep their columns: {row[:44]!r}")
     for value, name in ((1, "LP2  "), (2, "BP2  "), (3, "HP2  "), (4, "NOTCH"), (5, "LP4  "), (6, "CEM  "),
-                        (0, "SQ-80")):
+                        (7, "MOOG "), (8, "MS-20"), (9, "SSM  "), (10, "WASP "), (11, "303  "), (0, "SQ-80")):
         L.sq8l_gl_ctr(ed.v, 1, TYPE, value)
         ed.idle()
         shown = ed.lcd_row(0)[25:30]

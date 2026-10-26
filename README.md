@@ -121,7 +121,18 @@ code and verified against the original plugin running inside an x86 emulator.
   rises, and it self-oscillates, gently, at RES 29-31. Its calibration is a guess until it
   is compared with a real SQ-80: like the hardware, whose resonance varies from chip to chip,
   it is one plausible unit, not *the* SQ-80. It costs several times the CPU of the other
-  types. They all take the same CUT, RES, KEYB and FREQ modulation as the original filter, and
+  types. *MOOG*, *MS-20*, *SSM*, *WASP* and *303* are nonlinear models of famous filters,
+  translated from Joep Vanlier's [Filther](https://github.com/JoepVanlier/JSFX) (MIT; the
+  303 is Dominique Wurtz's diode ladder, MIT): a transistor ladder, the Korg MS-20's
+  Sallen-Key loop with its clipped resonance, the SSM2040's OTA cascade, the EDP Wasp's
+  CMOS-inverter state variable filter (2-pole, ringing but never self-oscillating) and the
+  TB-303's diode ladder (input hard-clipped, very dark at RES 0, screaming near RES 31). Each
+  is tuned so its resonance peaks at the CUT the display shows and a quiet signal passes at
+  unity; louder ones saturate in each model's own way (the WASP squashes a full-level
+  oscillator by about 5 dB and leaves a tiny DC offset, as Filther's model does). They run
+  at twice the sample rate, like CEM, and cost about 1-2 times its CPU (MOOG the most). They
+  are Filther's models, not measurements of the hardware. All the types take the same CUT,
+  RES, KEYB and FREQ modulation as the original filter, and
   sweep smoothly under fast modulation. The type belongs to the sound, so it is stored in the
   program and travels with it into banks, libraries and your project; every program that
   does not have it — anything made by the original SQ8L, any `.8XL` or bank file, any

@@ -57,6 +57,8 @@ public:
 
     // The halfband's taps on each side (half the up- or downsampler's polyphase length).
     static constexpr int kHalfTaps = 8;
+    // Its odd taps, doubled (c[j] is the tap at +-(2j + 1)); FilterVa resamples with them too.
+    static const double* halfbandTaps();
 
 private:
     void step(double x, double g, double r);  // one sample at twice the rate into z_

@@ -120,8 +120,9 @@ class Plugin:
         buf = C.create_string_buffer(data, len(data))
         self.d(effSetChunk, 0, len(data), C.cast(buf, C.c_void_p))
 
-    def render_note(self, frames=44100 // 2, note=48):
-        """RMS of a held note (the voices stopped first by the program's own sound)."""
+    def render_note(self, frames=44100 // 2, note=48, keep=None):
+        """RMS of a held note (the voices stopped first by the program's own sound). With
+        `keep` (a list), the held note's left channel is appended to it."""
         ev = MidiEv(1, C.sizeof(MidiEv), 0, 0, 0, 0, (C.c_uint8 * 4)(0x90, note, 100, 0))
         evs = Events(1, 0)
         evs.events[0] = C.cast(C.pointer(ev), C.c_void_p)
@@ -133,6 +134,8 @@ class Plugin:
             self.e.processReplacing(self.p, None, outs, 512)
             acc += sum(x * x for x in L)
             n += 512
+            if keep is not None:
+                keep.extend(L)
         off = MidiEv(1, C.sizeof(MidiEv), 0, 0, 0, 0, (C.c_uint8 * 4)(0x80, note, 0, 0))
         evs.events[0] = C.cast(C.pointer(off), C.c_void_p)
         self.d(effProcessEvents, 0, 0, C.cast(C.pointer(evs), C.c_void_p))
@@ -233,13 +236,15 @@ def main():
     pl.set(wave, 0.0)                               # a steady saw
     pl.set(freq, 64 / 127)                          # the cutoff in the middle
     rms = {}
-    for t, label in enumerate(("SQ-80", "LP2", "BP2", "HP2", "NOTCH", "LP4", "CEM")):
-        pl.set(ftype, t / 6)
+    labels = ("SQ-80", "LP2", "BP2", "HP2", "NOTCH", "LP4", "CEM", "MOOG", "MS-20", "SSM", "WASP", "303")
+    top = len(labels) - 1
+    for t, label in enumerate(labels):
+        pl.set(ftype, t / top)
         shown = pl.display(ftype)
         rms[label] = pl.render_note()
-        check(shown == label and abs(pl.get(ftype) - t / 6) < 1e-6 and rms[label] > 1e-3,
+        check(shown == label and abs(pl.get(ftype) - t / top) < 1e-6 and rms[label] > 1e-3,
               f"FILT TYPE {t} shows '{shown}', reads back and sounds (rms {rms[label]:.4f})")
-    check(len({round(v, 6) for v in rms.values()}) == 7, "the seven types sound different")
+    check(len({round(v, 6) for v in rms.values()}) == len(labels), f"the {len(labels)} types sound different")
     before = pl.chunk()
     pl.set(ftype, 0.0)
     check(pl.chunk() != before, "the type travels in the chunk")
@@ -261,17 +266,38 @@ def main():
     pl.set(idx["DCA3 ENABLE"], 1.0)
     pl.set(idx["DCA3 LEVEL"], 0.0)
     pl.set(idx["OSC3 SEMI"], (7 + 12) / 24)         # a fifth up
-    for t, label in enumerate(("SQ-80", "LP2", "BP2", "HP2", "NOTCH", "LP4")):
-        pl.set(ftype, t / 5)
-        pl.set(fsrc, 0.0)
-        off = pl.render_note()
-        pl.set(fsrc, 1.0)                           # OSC3
-        on = {}
-        for amt in (63, -63):
-            pl.set(famt, (amt + 63) / 126)
-            on[amt] = pl.render_note()
-        ok = all(math.isfinite(v) and v > 1e-3 and abs(v - off) > 0.01 * off for v in on.values())
-        check(ok, f"FM from the silent OSC3 changes {label} (rms OFF {off:.4f}, +63 {on[63]:.4f}, -63 {on[-63]:.4f})")
+    # Every note alike, whichever voice plays it: the oscillators and LFOs restart at the note
+    # and the LFOs' HUMAN randomness is off. (VOYAGER's oscillators and LFOs otherwise run on
+    # between notes, and the next voice starts them at another phase: renders with FM and
+    # without would differ by more than the FM.) Then the waveforms are compared, not their
+    # level: FM can move the sound a lot and its rms hardly.
+    for restart in ("MODE REST.OSC", "MODE REST.ENV", "MODE REST.VC"):
+        pl.set(idx[restart], 1.0)
+    for lfo in range(1, 5):
+        pl.set(idx[f"LFO{lfo} RESET"], 1 / 64)      # phase 0
+        pl.set(idx[f"LFO{lfo} HUMAN"], 0.0)
+
+    def note(src, amt):
+        pl.set(fsrc, src)
+        pl.set(famt, (amt + 63) / 126)
+        w = []
+        pl.render_note(keep=w)
+        return w
+
+    def apart(a, b):  # rms of the difference, relative to the first
+        return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)) / sum(x * x for x in a))
+
+    for t, label in enumerate(labels):
+        pl.set(ftype, t / top)
+        note(0.0, 0)                                # (the type's first note)
+        off, off2 = note(0.0, 0), note(0.0, 0)
+        same = apart(off, off2)
+        on = {amt: note(1.0, amt) for amt in (63, -63)}  # OSC3
+        moved = {amt: apart(off, w) for amt, w in on.items()}
+        ok = all(all(math.isfinite(x) for x in w) for w in on.values()) and \
+            all(m > max(0.15, 2 * same) for m in moved.values())
+        check(ok, f"FM from the silent OSC3 changes {label} (waveform moved {moved[63]:.2f} / {moved[-63]:.2f} "
+                  f"at +63 / -63, two notes without FM {same:.2f} apart)")
     before = pl.chunk()
     pl.set(fsrc, 0.0)
     after_src = pl.chunk()

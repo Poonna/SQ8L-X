@@ -68,7 +68,14 @@ constexpr ModSourceTable kModSources;
 
 // (port) The filter object a filter type plays: 0 FilterSQ, 1 the SVF (all its types), 2 the
 // CEM model.
-int filterOf(int type) { return type == FilterType::Sq80 ? 0 : (type == FilterType::Cem ? 2 : 1); }
+// The filter object a type plays on: 0 FilterSQ, 1 the SVF, 2 the CEM model, 3.. one per
+// FilterVa model (their states mean different things, so a switch between them clears).
+int filterOf(int type) {
+    if (type == FilterType::Sq80) return 0;
+    if (type == FilterType::Cem) return 2;
+    if (FilterType::isVa(type)) return 3 + (type - FilterType::Moog);
+    return 1;
+}
 
 }  // namespace
 
@@ -82,6 +89,7 @@ Master::Master(VoiceModules& modules, int32_t sampleRate, const int32_t* overrid
         for (auto& f : pair) f.init(&filterTable_, 0.0f);
     for (auto& f : svfs_) f.init(&svfTable_, 0.0f);  // (port) FILT -> TYPE
     for (auto& f : cems_) f.init(&cemTable_, 0.0f);
+    for (auto& f : vas_) f.init(&cemTable_, 0.0f);
     for (auto& s : fmSource_) s = -1;  // (port) FILT -> FM SRC: OFF until a control tick
     setSampleRateInt(sampleRate);
     setControlRate(kDefaultControlRate);
@@ -133,6 +141,7 @@ int32_t Master::setSampleRateInt(int32_t sr) {
         for (auto& f : filters_[v]) f.setSampleRate(static_cast<float>(sr));
         svfs_[v].setSampleRate(static_cast<float>(sr));
         cems_[v].setSampleRate(static_cast<float>(sr));
+        vas_[v].setSampleRate(static_cast<float>(sr));
     }
     filterTable_.compute(static_cast<float>(sr));
     svfTable_.compute(static_cast<float>(sr));
@@ -598,6 +607,7 @@ void Master::startVoice(int32_t slot, int32_t noteId, bool newNote, NoteRecord* 
             filters_[slot][0].copyStateFrom(nullptr);
             svfs_[slot].copyStateFrom(nullptr);
             cems_[slot].copyStateFrom(nullptr);
+            vas_[slot].copyStateFrom(nullptr);
             filterType_[slot] = programFilterType(prog);
             modules_.ampStart(slot, -1);
         } else {
@@ -605,6 +615,8 @@ void Master::startVoice(int32_t slot, int32_t noteId, bool newNote, NoteRecord* 
             filters_[slot][0].copyStateFrom(&filters_[other][0]);
             svfs_[slot].copyStateFrom(&svfs_[other]);
             cems_[slot].copyStateFrom(&cems_[other]);
+            vas_[slot].copyStateFrom(&vas_[other]);
+            vas_[slot].setModel(vas_[other].model());
             filterType_[slot] = filterType_[other];
             modules_.ampStart(slot, other);
         }
@@ -990,12 +1002,17 @@ void Master::controlUpdate(Voice& v) {
             flt.setParams(cutoff, s8(F[1]), true);
         } else if (takeOver && type == FilterType::Cem) {
             cems_[vi].copyStateFrom(nullptr);
+        } else if (takeOver && FilterType::isVa(type)) {
+            vas_[vi].copyStateFrom(nullptr);
         } else if (takeOver) {
             svfs_[vi].copyStateFrom(nullptr);
         }
     }
     if (type == FilterType::Cem) {
         cems_[vi].setParams(cutoff, s8(F[1]), v.tickCount == 0 || takeOver);
+    } else if (FilterType::isVa(type)) {
+        vas_[vi].setModel(type - FilterType::Moog);
+        vas_[vi].setParams(cutoff, s8(F[1]), v.tickCount == 0 || takeOver);
     } else if (type != FilterType::Sq80) {
         svfs_[vi].setType(type);
         svfs_[vi].setParams(cutoff, s8(F[1]), v.tickCount == 0 || takeOver);
@@ -1053,6 +1070,8 @@ bool Master::processVoice(Voice& v, float* acc) {
             x = filters_[vi][0].process(x);
         else if (filterType_[vi] == FilterType::Cem)
             x = cems_[vi].process(x);
+        else if (FilterType::isVa(filterType_[vi]))
+            x = vas_[vi].process(x);
         else
             x = svfs_[vi].process(x);
     } else {
@@ -1068,6 +1087,8 @@ bool Master::processVoice(Voice& v, float* acc) {
             x = filters_[vi][0].processFm(x, fm);
         else if (filterType_[vi] == FilterType::Cem)
             x = cems_[vi].processFm(x, fm);
+        else if (FilterType::isVa(filterType_[vi]))
+            x = vas_[vi].processFm(x, fm);
         else
             x = svfs_[vi].processFm(x, fm);
     }

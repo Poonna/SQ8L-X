@@ -175,7 +175,7 @@ inline int programPolyphony(const uint8_t* program) {
 
 // (port) Filter type of a program record (ofs::Filter::Type of filter 1): 0 = the original's
 // filter, also for a missing record and for a value no version of the port writes.
-constexpr int kNumFilterTypes = 7;  // FilterType::Count
+constexpr int kNumFilterTypes = 12;  // FilterType::Count
 inline int programFilterType(const uint8_t* program) {
     if (!program) return 0;
     const int t = static_cast<int>(program[ofs::filter(0) + ofs::Filter::Type]);

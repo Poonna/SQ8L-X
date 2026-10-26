@@ -12,6 +12,7 @@
 #include <functional>
 
 #include "FilterCem.h"
+#include "FilterVa.h"
 #include "FilterSQ.h"
 #include "FilterSvf.h"
 #include "MidiParser.h"
@@ -122,6 +123,7 @@ public:
     // (port) the filters of the other types (FILT -> TYPE) and the type a voice plays
     const FilterSvf& svf(int voice) const { return svfs_[voice]; }
     const FilterCem& cem(int voice) const { return cems_[voice]; }
+    const FilterVa& va(int voice) const { return vas_[voice]; }
     int filterType(int voice) const { return filterType_[voice]; }
     // (port) the oscillator a voice's filter FM follows, -1 = OFF (FILT -> FM SRC)
     int filterFmSource(int voice) const { return fmSource_[voice]; }
@@ -226,6 +228,7 @@ private:
     FilterSvf svfs_[kMaxVoices];
     CemTable cemTable_{};
     FilterCem cems_[kMaxVoices];
+    FilterVa vas_[kMaxVoices];  // MOOG, MS-20, SSM, WASP, 303 (on cemTable_, see FilterVa.h)
     int32_t filterType_[kMaxVoices] = {};
     // (port) FILT -> FM SRC / FM AMT, read at every full control tick: the oscillator 0..2 a
     // voice's filter cutoff follows at audio rate (-1 = OFF: process() as the original) and

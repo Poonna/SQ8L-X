@@ -48,6 +48,7 @@
 #include "FilterCem.h"
 #include "FilterSQ.h"
 #include "FilterSvf.h"
+#include "FilterVa.h"
 #include "Program.h"
 #include "Synth.h"
 
@@ -599,7 +600,8 @@ int direction() {
 int filterTypes() {
     using namespace sq8l;
     constexpr double kPi = 3.14159265358979323846;
-    const char* const names[FilterType::Count] = {"SQ-80", "LP2", "BP2", "HP2", "NOTCH", "LP4", "CEM"};
+    const char* const names[FilterType::Count] = {"SQ-80", "LP2",  "BP2", "HP2", "NOTCH", "LP4",
+                                                  "CEM",   "MOOG", "MS-20", "SSM", "WASP", "303"};
     int bad = 0;
     auto fail = [&](const char* what, int type, double sr, double v) {
         bad++;
@@ -855,6 +857,71 @@ int filterTypes() {
                 cemBad ? "FAILED" : "ok");
     bad += cemBad;
 
+    // The models ported from Filther (FilterVa). A small signal passes at unity, RES 28 peaks
+    // at the cutoff (the port tunes every model so, FilterVa.cpp), and a loud signal at RES 31
+    // through a cutoff jumping about stays finite and bounded.
+    int vaBad = 0;
+    {
+        auto vaFail = [&](int type, const char* what, double sr, double v) {
+            vaBad++;
+            std::printf("BAD %s %s at %.0f Hz: %g\n", names[type], what, sr, v);
+        };
+        auto vaGain = [&](const CemTable& t, float sr, int type, int reso, double f, double amp) {
+            FilterVa flt;
+            flt.init(&t, sr);
+            flt.setModel(type - FilterType::Moog);
+            flt.setParams(c1k, reso, true);
+            const int n = static_cast<int>(sr * 0.2);
+            double re = 0, im = 0, ri = 0, ii = 0;
+            for (int i = 0; i < n; i++) {
+                const double ph = 2 * kPi * f * i / sr;
+                const double x = amp * std::sin(ph);
+                const double y = flt.process(x);
+                if (i >= n / 2) re += y * std::cos(ph), im += y * std::sin(ph), ri += x * std::cos(ph), ii += x * std::sin(ph);
+            }
+            return std::sqrt(re * re + im * im) / std::sqrt(ri * ri + ii * ii);
+        };
+        for (const float sr : {44100.0f, 96000.0f}) {
+            CemTable t;
+            t.compute(sr);
+            for (int type = FilterType::Moog; type <= FilterType::Tb303; type++) {
+                const double dc = vaGain(t, sr, type, 0, fc / 50, 0.01);
+                if (!(dc > 0.8 && dc < 1.2)) vaFail(type, "small-signal passband gain", sr, dc);
+                double peakF = 0, peakG = 0;
+                for (double f = fc * 0.6; f < fc * 1.6; f *= 1.02) {
+                    const double g = vaGain(t, sr, type, 28, f, 0.01);
+                    if (g > peakG) peakG = g, peakF = f;
+                }
+                if (!(peakF > fc * 0.88 && peakF < fc * 1.12)) vaFail(type, "RES 28 peak not at the cutoff (ratio)", sr, peakF / fc);
+                if (!(peakG > dc * 2)) vaFail(type, "RES 28 hardly resonates (peak / passband)", sr, peakG / dc);
+                std::printf("  %-5s at %.0f Hz: passband %.3f, RES 28 peak at %.2f of the cutoff, %.1f x the passband\n",
+                            names[type], sr, dc, peakF / fc, peakG / dc);
+            }
+        }
+        for (const float sr : {44100.0f, 48000.0f, 192000.0f}) {
+            CemTable t;
+            t.compute(sr);
+            for (int type = FilterType::Moog; type <= FilterType::Tb303; type++) {
+                FilterVa flt;
+                flt.init(&t, sr);
+                flt.setModel(type - FilterType::Moog);
+                double peak = 0;
+                bool fin = true;
+                for (int i = 0; i < static_cast<int>(sr / 2); i++) {
+                    if (i % 97 == 0) flt.setParams(int32_t(next() % 256), (i / 97) % 3 ? 31 : int32_t(next() % 32), (next() & 1) != 0);
+                    const double x = ((next() / 4294967295.0) * 2 - 1) * 3;
+                    const double y = flt.process(x);
+                    if (!std::isfinite(y)) fin = false;
+                    else peak = std::max(peak, std::fabs(y));
+                }
+                if (!fin || !(peak < 20)) vaFail(type, "loud noise, RES 31, jumping cutoff: peak", sr, fin ? peak : INFINITY);
+            }
+        }
+    }
+    std::printf("Filther models at several sample rates: unity passband, resonance at the cutoff, bounded (%s)\n",
+                vaBad ? "FAILED" : "ok");
+    bad += vaBad;
+
     // Whole programs.
     int progBad = 0, set = 0;
     {
@@ -934,6 +1001,11 @@ int filterTypes() {
             progBad++;
             std::printf("BAD INIT: CEM not darker than LP2\n");
         }
+        for (const int t : {Moog, Ssm, Tb303})  // 4-pole lowpasses
+            if (!(bright[t] < bright[Lp2])) {
+                progBad++;
+                std::printf("BAD INIT: %s not darker than LP2\n", names[t]);
+            }
     }
 
     // The factory programs as they are (many keep the filter wide open, where a highpass or
@@ -961,12 +1033,17 @@ int filterTypes() {
             }
             if (hashLR(L[type], R[type]) != hashLR(L[0], R[0])) changed[type]++;
         }
-        // SQ-80 -> LP4 -> BP2 -> CEM -> LP2 -> SQ-80
+        // SQ-80 -> LP4 -> BP2 -> CEM -> MOOG -> 303 -> MS-20 -> SSM -> WASP -> LP2 -> SQ-80
         std::vector<int> seq(86, FilterType::Sq80);
-        for (int b = 20; b < 40; b++) seq[size_t(b)] = FilterType::Lp4;
-        for (int b = 40; b < 55; b++) seq[size_t(b)] = FilterType::Bp2;
-        for (int b = 55; b < 70; b++) seq[size_t(b)] = FilterType::Cem;
-        for (int b = 70; b < 78; b++) seq[size_t(b)] = FilterType::Lp2;
+        for (int b = 10; b < 20; b++) seq[size_t(b)] = FilterType::Lp4;
+        for (int b = 20; b < 28; b++) seq[size_t(b)] = FilterType::Bp2;
+        for (int b = 28; b < 36; b++) seq[size_t(b)] = FilterType::Cem;
+        for (int b = 36; b < 44; b++) seq[size_t(b)] = FilterType::Moog;
+        for (int b = 44; b < 52; b++) seq[size_t(b)] = FilterType::Tb303;
+        for (int b = 52; b < 60; b++) seq[size_t(b)] = FilterType::Ms20;
+        for (int b = 60; b < 68; b++) seq[size_t(b)] = FilterType::Ssm;
+        for (int b = 68; b < 74; b++) seq[size_t(b)] = FilterType::Wasp;
+        for (int b = 74; b < 78; b++) seq[size_t(b)] = FilterType::Lp2;
         std::vector<float> Ls, Rs;
         renderProg(prog, seq, Ls, Rs);
         if (!finite(Ls) || !finite(Rs)) {
@@ -998,7 +1075,8 @@ int filterTypes() {
 int filterFm() {
     using namespace sq8l;
     constexpr double kPi = 3.14159265358979323846;
-    const char* const names[FilterType::Count] = {"SQ-80", "LP2", "BP2", "HP2", "NOTCH", "LP4", "CEM"};
+    const char* const names[FilterType::Count] = {"SQ-80", "LP2",  "BP2", "HP2", "NOTCH", "LP4",
+                                                  "CEM",   "MOOG", "MS-20", "SSM", "WASP", "303"};
     int bad = 0;
     uint32_t rng = 0x9e3779b9u;
     auto next = [&rng] {
@@ -1013,27 +1091,38 @@ int filterFm() {
         FilterSQ sq;
         FilterSvf svf;
         FilterCem cem;
+        FilterVa va;
         int type;
         Flt(const FilterTable* tq, const SvfTable* ts, const CemTable* tc, float sr, int t) : type(t) {
             sq.init(tq, sr);
             svf.init(ts, sr);
             cem.init(tc, sr);
-            if (t != FilterType::Sq80 && t != FilterType::Cem) svf.setType(t);
+            va.init(tc, sr);
+            if (FilterType::isVa(t))
+                va.setModel(t - FilterType::Moog);
+            else if (t != FilterType::Sq80 && t != FilterType::Cem)
+                svf.setType(t);
         }
         void set(int32_t c, int32_t r, bool imm) {
             if (type == FilterType::Sq80)
                 sq.setParams(c, r, imm);
             else if (type == FilterType::Cem)
                 cem.setParams(c, r, imm);
+            else if (FilterType::isVa(type))
+                va.setParams(c, r, imm);
             else
                 svf.setParams(c, r, imm);
         }
         double run(double x) {
-            return type == FilterType::Sq80 ? sq.process(x) : type == FilterType::Cem ? cem.process(x) : svf.process(x);
+            return type == FilterType::Sq80 ? sq.process(x)
+                   : type == FilterType::Cem ? cem.process(x)
+                   : FilterType::isVa(type)  ? va.process(x)
+                                             : svf.process(x);
         }
         double runFm(double x, double fm) {
             return type == FilterType::Sq80 ? sq.processFm(x, fm)
                    : type == FilterType::Cem ? cem.processFm(x, fm)
+                   : FilterType::isVa(type)  ? va.processFm(x, fm)
                                              : svf.processFm(x, fm);
         }
     };

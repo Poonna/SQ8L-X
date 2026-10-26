@@ -24,7 +24,14 @@ constexpr int Hp2 = 3;    // 2-pole highpass, 12 dB/oct
 constexpr int Notch = 4;  // 2-pole band reject
 constexpr int Lp4 = 5;    // 4-pole lowpass, 24 dB/oct: two cascaded SVFs
 constexpr int Cem = 6;    // nonlinear model of the SQ-80's CEM3379 4-pole lowpass (FilterCem)
-constexpr int Count = 7;
+// Nonlinear ZDF models ported from Filther (FilterVa), in FilterVa::Model order.
+constexpr int Moog = 7;   // transistor ladder, 4-pole lowpass
+constexpr int Ms20 = 8;   // Korg MS-20 Sallen-Key, 2-pole lowpass
+constexpr int Ssm = 9;    // SSM2040 OTA cascade, 4-pole lowpass
+constexpr int Wasp = 10;  // EDP Wasp CMOS state-variable, 2-pole lowpass
+constexpr int Tb303 = 11; // TB-303 diode ladder, 4-pole lowpass
+constexpr int Count = 12;
+constexpr bool isVa(int t) { return t >= Moog && t <= Tb303; }
 }  // namespace FilterType
 
 // Per sample rate: the integrator gain g = tan(pi fc / sr) of every cutoff index, with fc

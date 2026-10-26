@@ -350,7 +350,9 @@ before; 1..5 are `svfs_[v]` (`FilterSvf`, `src/engine/FilterSvf.{h,cpp}`), a lin
 trapezoidal state variable filter after Andy Simper (Cytomic, *SvfLinearTrapOptimised2*):
 LP2, BP2, HP2, NOTCH (2-pole) and LP4 (two cascaded 2-pole stages with the Butterworth Qs
 0.54 and 1.31, the resonance on the second); 6 is `cems_[v]` (`FilterCem`,
-`src/engine/FilterCem.{h,cpp}`), CEM, a nonlinear model of the SQ-80's CEM3379 (below).
+`src/engine/FilterCem.{h,cpp}`), CEM, a nonlinear model of the SQ-80's CEM3379 (below);
+7..11 are `vas_[v]` (`FilterVa`, `src/engine/FilterVa.{h,cpp}`), MOOG, MS-20, SSM, WASP and
+303, nonlinear models translated from Filther (below).
 
 The SVF takes FilterSQ's inputs: the same cutoff index (`FREQ * 2` plus key tracking, the
 two FREQ modulation slots and CC74, computed once in `controlUpdate`) looked up in the same
@@ -406,12 +408,42 @@ Calibration, all of it a guess until measured against a real SQ-80:
 It costs about 100-170 ns per voice-sample on a desktop x86-64 (the SVF a few ns), most of
 it the tanh and divisions of the Newton iterations.
 
+### MOOG, MS-20, SSM, WASP, 303 (FilterVa)
+
+Five models translated from Joep Vanlier's Filther (MIT), the 303 being Dominique Wurtz's
+diode ladder (MIT); see the comments in `FilterVa.h` / `FilterVa.cpp` for which Filther
+function each one is and THIRD_PARTY_NOTICES.md for the licences. Each is a set of node
+equations with trapezoidal integrators and the nonlinearities inside the loop, solved per
+step with Filther's 3 Newton iterations from the last state (the 303: the linear ladder
+solved exactly, its input hard-clipped):
+
+| Type | Model | Order | Resonance (RES 0..31 = Filther's 0..1) |
+|---|---|---|---|
+| MOOG | transistor ladder, tanh stages | 4-pole LP | k = 4.4 q, self-oscillates near the top |
+| MS-20 | Sallen-Key, atan integrators, diode-clipped feedback | 2-pole LP | k = 2 q, the clip bounds oscillation |
+| SSM | SSM2040 OTA cascade, tanh stages and feedback | 4-pole LP | K2 = 5 q |
+| WASP | CMOS-inverter state variable filter | 2-pole LP | damping r = 0.8 - 0.6 q (Q about 2 to 8) |
+| 303 | TB-303 diode ladder | 4-pole LP | k = 20 q, output scaled by 1 + k/2 |
+
+They share the CEM model's machinery: `cemTable_` for `g = tan(pi fc / 2 sr)` per index (each
+model's integrator gain is set from it so that its linear natural frequency is the cutoff,
+where Filther scales its own frequency axis per model; the WASP and 303 are then tuned by
+`retune`, which scales the prewarped angle, so their RES 28 peak lands on the cutoff), the
+same 2x halfband resampling (`FilterCem::halfbandTaps`), cutoff index and resonance smoothed
+per sample, and the filter FM offset delayed with the input. A non-finite step clears the
+model's state. Measured (render_check --filter-types): passband 0.98-1.01, RES 28 peak at
+0.97-1.00 of the cutoff, bounded on full-scale noise at RES 31 under jumping cutoffs. Cost
+per voice-sample on a desktop x86-64: 303 about 120 ns, MS-20 190, WASP 200, SSM 290, MOOG
+320 (CEM 150). The WASP keeps Filther's 0.01 bias in its inverters, so it rests at an output
+offset of about -0.005.
+
 ### Switching
 
 `filterType_[v]` is the type the voice plays. It is set at a note start (a legato steal
-inherits the stolen voice's type and SVF and CEM state, as FilterSQ copies its state) and
-followed at every control tick: switching to another filter object (FilterSQ, the SVF, the
-CEM model) while a note plays clears the one taking over and puts it on its target
+inherits the stolen voice's type and SVF, CEM and FilterVa state, as FilterSQ copies its
+state) and followed at every control tick: switching to another filter object (FilterSQ, the
+SVF, the CEM model, or another FilterVa model, whose states mean different things) while a
+note plays clears the one taking over and puts it on its target
 immediately; switching between SVF types keeps the state. FilterSQ still gets its
 `setParams` every tick whatever the type, and its `process` only runs for type 0, so a type
 0 voice is untouched (243/243 regression renders). `render_check --filter-types` checks the
