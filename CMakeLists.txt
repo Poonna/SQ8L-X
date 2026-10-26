@@ -95,7 +95,7 @@ add_dependencies(sq8l_testapi sq8l_version_header)
 target_compile_options(sq8l_testapi PRIVATE ${SQ8L_FP_FLAGS})
 
 # ---------------------------------------------------------------- plugin (DPF)
-option(SQ8L_BUILD_PLUGIN "Build the SQ8L plugin (VST2/VST3/AU/CLAP)" ON)
+option(SQ8L_BUILD_PLUGIN "Build the SQ8L-X plugin (VST2/VST3/AU/CLAP/LV2)" ON)
 if(SQ8L_BUILD_PLUGIN)
   # Local DPF / pugl patches (kept out of the submodules): apply once if not yet applied.
   foreach(entry "dpf-vst2-compat.patch=third_party/DPF" "dpf-msvc-enum.patch=third_party/DPF"
@@ -160,12 +160,12 @@ if(SQ8L_BUILD_PLUGIN)
     set(SQ8L_FORMATS vst2 vst3 clap lv2)
     set(SQ8L_DPF_OPTIONS USE_FILE_BROWSER)
   endif()
-  # The target is named like the original's file (SQ8L.dll), so the plug-ins come out as
-  # SQ8L.vst3, SQ8L.clap, SQ8L.component, SQ8L.lv2...
+  # The target is named after the plug-in, so the plug-ins come out as SQ8L-X.vst3,
+  # SQ8L-X.clap, SQ8L-X.component, SQ8L-X.lv2... (next to the SQ8L port's SQ8L.*)
   # MONOLITHIC: the LV2 DSP and UI in one binary. The UI reaches the plugin instance directly
   # (DISTRHO_PLUGIN_WANT_DIRECT_ACCESS), so DPF's manifest names a single binary for both;
   # built apart, hosts looked for the UI in the DSP binary and showed none.
-  dpf_add_plugin(SQ8L ${SQ8L_DPF_OPTIONS} MONOLITHIC
+  dpf_add_plugin(SQ8L-X ${SQ8L_DPF_OPTIONS} MONOLITHIC
     TARGETS ${SQ8L_FORMATS}
     UI_TYPE opengl
     FILES_DSP src/plugin/SQ8LPlugin.cpp
@@ -177,29 +177,29 @@ if(SQ8L_BUILD_PLUGIN)
              $<$<PLATFORM_ID:Windows>:${CMAKE_SOURCE_DIR}/src/plugin/win/DarkMenu.cpp>
              $<$<PLATFORM_ID:Linux>:${CMAKE_SOURCE_DIR}/src/plugin/linux/X11Pointer.cpp>
              $<$<PLATFORM_ID:Linux>:${CMAKE_SOURCE_DIR}/src/plugin/linux/ModalFiber.cpp>)
-  target_include_directories(SQ8L PUBLIC src/plugin)
-  target_link_libraries(SQ8L PUBLIC sq8l_engine)
+  target_include_directories(SQ8L-X PUBLIC src/plugin)
+  target_link_libraries(SQ8L-X PUBLIC sq8l_engine)
   # The editor logic for its pages, which the published parameters are made from (HostParams.h).
-  target_link_libraries(SQ8L-dsp PUBLIC sq8l_engine sq8l_version sq8l_gui_logic)
-  add_dependencies(SQ8L-dsp sq8l_version_header)
+  target_link_libraries(SQ8L-X-dsp PUBLIC sq8l_engine sq8l_version sq8l_gui_logic)
+  add_dependencies(SQ8L-X-dsp sq8l_version_header)
   # MTS-ESP client (third_party/MTS-ESP, 0BSD): dlopens the master's library at run time.
-  target_include_directories(SQ8L-dsp PUBLIC ${CMAKE_SOURCE_DIR}/third_party/MTS-ESP/Client)
+  target_include_directories(SQ8L-X-dsp PUBLIC ${CMAKE_SOURCE_DIR}/third_party/MTS-ESP/Client)
   if(NOT WIN32)
-    target_link_libraries(SQ8L-dsp PUBLIC ${CMAKE_DL_LIBS})
+    target_link_libraries(SQ8L-X-dsp PUBLIC ${CMAKE_DL_LIBS})
   endif()
-  target_link_libraries(SQ8L-ui PUBLIC sq8l_gui sq8l_gui_logic sq8l_gui_drawn sq8l_engine)
+  target_link_libraries(SQ8L-X-ui PUBLIC sq8l_gui sq8l_gui_logic sq8l_gui_drawn sq8l_engine)
   if(WIN32)
-    target_link_libraries(SQ8L-ui PUBLIC comdlg32 gdi32 user32 uxtheme)
+    target_link_libraries(SQ8L-X-ui PUBLIC comdlg32 gdi32 user32 uxtheme)
   endif()
   if(APPLE)
     set_source_files_properties(src/plugin/mac/PlatformUiMac.mm PROPERTIES COMPILE_FLAGS -fobjc-arc)
-    target_link_libraries(SQ8L-ui PUBLIC "-framework Cocoa" "-framework UniformTypeIdentifiers")
+    target_link_libraries(SQ8L-X-ui PUBLIC "-framework Cocoa" "-framework UniformTypeIdentifiers")
   endif()
-  target_include_directories(SQ8L-ui PUBLIC src/plugin src/gui)
-  target_compile_options(SQ8L-dsp PRIVATE ${SQ8L_FP_FLAGS})
-  # VST2 on Windows/Linux: SQ8L.dll / SQ8L.so like the original, not DPF's SQ8L-vst2.
-  if(TARGET SQ8L-vst2 AND NOT APPLE)
-    set_target_properties(SQ8L-vst2 PROPERTIES OUTPUT_NAME SQ8L)
+  target_include_directories(SQ8L-X-ui PUBLIC src/plugin src/gui)
+  target_compile_options(SQ8L-X-dsp PRIVATE ${SQ8L_FP_FLAGS})
+  # VST2 on Windows/Linux: SQ8L-X.dll / SQ8L-X.so, not DPF's SQ8L-X-vst2.
+  if(TARGET SQ8L-X-vst2 AND NOT APPLE)
+    set_target_properties(SQ8L-X-vst2 PROPERTIES OUTPUT_NAME SQ8L-X)
   endif()
 endif()
 

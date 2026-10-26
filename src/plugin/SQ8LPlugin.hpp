@@ -68,10 +68,10 @@ public:
     bool vst2GetProgramNameIndexed(int32_t index, char* out24) override;
 
 protected:
-    const char* getLabel() const override { return "SQ8L"; }
-    const char* getDescription() const override { return "Ensoniq SQ-80 emulation"; }
+    const char* getLabel() const override { return "SQ8L-X"; }
+    const char* getDescription() const override { return "Ensoniq SQ-80 emulation (SQ8L with DAW parameters)"; }
     const char* getMaker() const override { return "Siegfried Kullmann, Claudio Tassitano, Mario Kruselj, GitHub contributors"; }
-    const char* getHomePage() const override { return ""/* "https://www.kvraudio.com/product/sq8l-by-siegfried-kullmann" */; }
+    const char* getHomePage() const override { return "https://github.com/Poonna/SQ8L-X"; }
     const char* getLicense() const override { return "Free and Open Source"; }
     // (port) This build's number, not the original's 0.91 (SQ8LVersion.h, cmake/Version.cmake).
     uint32_t getVersion() const override {

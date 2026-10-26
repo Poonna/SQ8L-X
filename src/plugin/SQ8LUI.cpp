@@ -819,7 +819,7 @@ private:
         o.saving = req.save;
         o.defaultName = name.c_str();
         o.startDir = dir.empty() ? nullptr : dir.c_str();
-        o.title = req.save ? "SQ8L - Save" : "SQ8L - Open";
+        o.title = req.save ? "SQ8L-X - Save" : "SQ8L-X - Open";
         fileDone_ = false;
         fileChosen_.clear();
         if (!openFileBrowser(o)) return false;

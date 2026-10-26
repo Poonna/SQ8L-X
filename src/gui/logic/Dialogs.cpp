@@ -221,11 +221,12 @@ std::vector<std::string> modulationUsage(const Program& p) {  // FUN_0047cb80
 std::string aboutText() {
   static const char *const kLines[] =
   {
-    "SQ8L",
+    "SQ8L-X",
     kVersion,  // (port) the version of this build, see SQ8LVersion.h
     "",
     "(c) 2006-2008 Siegfried Kullmann",
     "(c) 2026-20xx Claudio Tassitano, Mario Kruselj & other GitHub contributors",
+    "SQ8L-X: the SQ8L port with parameters for the DAW (github.com/Poonna/SQ8L-X)",
     "",
     "Thanks to Rainer Buchty for SQ-80 resources, measurements and expertise!",
     "",

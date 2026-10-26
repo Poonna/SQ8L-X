@@ -334,8 +334,8 @@ void EditorController::show() {  // TplugEditForm_FormShow
         // not a column. Uppercase: the VFD folds lowercase. Its '(' and ')' draw as chevrons.
         std::string version = "VERSION " + std::string(kVersion);
         for (char& c : version) c = char(std::toupper(static_cast<unsigned char>(c)));
-        ctr_->showMessage(-1, -1, "*** SQ8L CROSS WAVE SYNTHESIZER ***", version, 0x42, true);
-        setStatus("Welcome to SQ8L");
+        ctr_->showMessage(-1, -1, "*** SQ8L-X CROSS WAVE SYNTHESIZER ***", version, 0x42, true);
+        setStatus("Welcome to SQ8L-X");
         firstInstance_ = false;
     } else {
         setStatus("");

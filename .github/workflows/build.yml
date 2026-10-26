@@ -36,24 +36,24 @@ jobs:
       - name: Parameters published to the host (port addition)
         run: |
           ./build/sq8l_param_check -q
-          python3 tests/test_plugin_params.py build/bin/SQ8L.vst/Contents/MacOS/SQ8L
+          python3 tests/test_plugin_params.py build/bin/SQ8L-X.vst/Contents/MacOS/SQ8L-X
       # Code signing and notarization (Developer ID) go here once certificates are set up
       # as repository secrets; until then package.sh signs the bundles ad hoc.
       - name: Package
-        run: tools/package.sh build macos SQ8L-macOS-universal.zip
+        run: tools/package.sh build macos SQ8L-X-macOS-universal.zip
       - name: Validate the packaged Audio Unit
         run: |
-          ditto -x -k SQ8L-macOS-universal.zip pkg
+          ditto -x -k SQ8L-X-macOS-universal.zip pkg
           mkdir -p ~/Library/Audio/Plug-Ins/Components
-          cp -R pkg/SQ8L/SQ8L.component ~/Library/Audio/Plug-Ins/Components/
+          cp -R pkg/SQ8L-X/SQ8L-X.component ~/Library/Audio/Plug-Ins/Components/
           killall -9 AudioComponentRegistrar || true
-          auval -v aumu SQ8L SQ8L
+          auval -v aumu SQ8X SQ8L
       - name: Audio Unit presets and state as a host drives them
-        run: MallocScribble=1 ./build/sq8l_au_check pkg/SQ8L/SQ8L.component
+        run: MallocScribble=1 ./build/sq8l_au_check pkg/SQ8L-X/SQ8L-X.component
       - uses: actions/upload-artifact@v7
         with:
-          name: SQ8L-macOS-universal
-          path: SQ8L-macOS-universal.zip
+          name: SQ8L-X-macOS-universal
+          path: SQ8L-X-macOS-universal.zip
 
   windows-build:
     runs-on: ubuntu-24.04
@@ -69,11 +69,11 @@ jobs:
       - name: Build
         run: cmake --build build
       - name: Package
-        run: tools/package.sh build windows SQ8L-Windows-x64.zip
+        run: tools/package.sh build windows SQ8L-X-Windows-x64.zip
       - uses: actions/upload-artifact@v7
         with:
-          name: SQ8L-Windows-x64
-          path: SQ8L-Windows-x64.zip
+          name: SQ8L-X-Windows-x64
+          path: SQ8L-X-Windows-x64.zip
       - uses: actions/upload-artifact@v7
         with:
           name: windows-render-check
@@ -131,28 +131,28 @@ jobs:
       - name: Parameters published to the host (port addition)
         run: |
           ./build/sq8l_param_check -q
-          python3 tests/test_plugin_params.py build/bin/SQ8L.so
+          python3 tests/test_plugin_params.py build/bin/SQ8L-X.so
       - name: Editor additions of the port
         run: SQ8L_TESTAPI=$PWD/build/libsq8l_testapi.so python3 tests/test_gui_extensions.py
       - name: The version injected into the build
         run: python3 tests/test_version.py
       - name: Editor on an X server (Xvfb)
         run: |
-          sh tests/linux_ui_session.sh build/bin/SQ8L.so ui-session \
+          sh tests/linux_ui_session.sh build/bin/SQ8L-X.so ui-session \
             "c 105,12; m 110,125; c 330,161; c 40,52; k Escape; c 406,63; k Down; c 362,380; c 168,12; k Escape"
           grep -q "^closed" ui-session/host.log
       - name: A menu or dialog left open does not hold the host up
         run: |
-          sh tests/linux_ui_session.sh build/bin/SQ8L.so menu-hold \
+          sh tests/linux_ui_session.sh build/bin/SQ8L-X.so menu-hold \
             "c 105,12; w 6; k Escape; c 30,12; c 60,72; w 6; k Escape"
           grep "^longest idle call" menu-hold/host.log
           awk '/^longest idle call/ { ok = $4 < 500 } END { exit !ok }' menu-hold/host.log
       - name: Package
-        run: tools/package.sh build linux SQ8L-Linux-${{ matrix.arch }}.tar.gz
+        run: tools/package.sh build linux SQ8L-X-Linux-${{ matrix.arch }}.tar.gz
       - uses: actions/upload-artifact@v7
         with:
-          name: SQ8L-Linux-${{ matrix.arch }}
-          path: SQ8L-Linux-${{ matrix.arch }}.tar.gz
+          name: SQ8L-X-Linux-${{ matrix.arch }}
+          path: SQ8L-X-Linux-${{ matrix.arch }}.tar.gz
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -184,18 +184,18 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
-          pattern: SQ8L-*
+          pattern: SQ8L-X-*
       - uses: softprops/action-gh-release@v3
         with:
           draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
-          name: SQ8L ${{ github.ref_name }}
+          name: SQ8L-X ${{ github.ref_name }}
           body_path: .github/release-notes.md
           files: |
-            artifacts/SQ8L-macOS-universal/SQ8L-macOS-universal.zip
-            artifacts/SQ8L-Windows-x64/SQ8L-Windows-x64.zip
-            artifacts/SQ8L-Linux-x64/SQ8L-Linux-x64.tar.gz
-            artifacts/SQ8L-Linux-arm64/SQ8L-Linux-arm64.tar.gz
+            artifacts/SQ8L-X-macOS-universal/SQ8L-X-macOS-universal.zip
+            artifacts/SQ8L-X-Windows-x64/SQ8L-X-Windows-x64.zip
+            artifacts/SQ8L-X-Linux-x64/SQ8L-X-Linux-x64.tar.gz
+            artifacts/SQ8L-X-Linux-arm64/SQ8L-X-Linux-arm64.tar.gz
 
   # Every push to main (a merged PR) moves the "nightly" tag to it and replaces the files of
   # the rolling "nightly" pre-release. Numbered releases still come from v* tags, above.
@@ -214,7 +214,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
-          pattern: SQ8L-*
+          pattern: SQ8L-X-*
       - name: Publish the nightly pre-release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -240,11 +240,11 @@ jobs:
           } > notes.md
           git tag -f nightly
           git push -f origin refs/tags/nightly
-          title="SQ8L nightly ($short)"
-          files="artifacts/SQ8L-macOS-universal/SQ8L-macOS-universal.zip
-            artifacts/SQ8L-Windows-x64/SQ8L-Windows-x64.zip
-            artifacts/SQ8L-Linux-x64/SQ8L-Linux-x64.tar.gz
-            artifacts/SQ8L-Linux-arm64/SQ8L-Linux-arm64.tar.gz"
+          title="SQ8L-X nightly ($short)"
+          files="artifacts/SQ8L-X-macOS-universal/SQ8L-X-macOS-universal.zip
+            artifacts/SQ8L-X-Windows-x64/SQ8L-X-Windows-x64.zip
+            artifacts/SQ8L-X-Linux-x64/SQ8L-X-Linux-x64.tar.gz
+            artifacts/SQ8L-X-Linux-arm64/SQ8L-X-Linux-arm64.tar.gz"
           if gh release view nightly > /dev/null 2>&1; then
             gh release edit nightly --title "$title" --notes-file notes.md --prerelease --latest=false
             gh release upload nightly --clobber $files

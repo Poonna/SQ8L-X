@@ -37,15 +37,15 @@ NSString* menuTitle(const std::string& s) {
 }  // namespace
 
 // ---------------------------------------------------------------- Objective-C helpers
-@interface SQ8LPortV1MenuTarget : NSObject
+@interface SQ8LXPortV1MenuTarget : NSObject
 @property(nonatomic) NSInteger chosen;
 - (void)pick:(NSMenuItem*)item;
 @end
-@implementation SQ8LPortV1MenuTarget
+@implementation SQ8LXPortV1MenuTarget
 - (void)pick:(NSMenuItem*)item { self.chosen = item.tag; }
 @end
 
-@interface SQ8LPortV1DialogController : NSObject <NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate>
+@interface SQ8LXPortV1DialogController : NSObject <NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate>
 @property(nonatomic) ModalDialog* dialog;
 @property(nonatomic, strong) NSPanel* panel;
 @property(nonatomic, strong) NSTableView* table;
@@ -54,7 +54,7 @@ NSString* menuTitle(const std::string& s) {
 @property(nonatomic) BOOL syncing;
 @end
 
-@implementation SQ8LPortV1DialogController
+@implementation SQ8LXPortV1DialogController
 // (dialog is nullptr once the dialog has ended: see PlatformUiMac::runModal)
 - (NSInteger)numberOfRowsInTableView:(NSTableView*)tv {
     return self.dialog ? (NSInteger)self.dialog->items.size() : 0;
@@ -131,17 +131,17 @@ NSString* menuTitle(const std::string& s) {
 }
 @end
 
-@interface SQ8LPortV1NameField : NSTextField
+@interface SQ8LXPortV1NameField : NSTextField
 @property(nonatomic) std::function<void(int)> onKey;
 @end
-@implementation SQ8LPortV1NameField
+@implementation SQ8LXPortV1NameField
 @end
 
-@interface SQ8LPortV1NameDelegate : NSObject <NSTextFieldDelegate>
+@interface SQ8LXPortV1NameDelegate : NSObject <NSTextFieldDelegate>
 @property(nonatomic) std::function<void(const std::string&)> onEnd;
 @property(nonatomic) std::function<void(int)> onKey;
 @end
-@implementation SQ8LPortV1NameDelegate
+@implementation SQ8LXPortV1NameDelegate
 - (void)controlTextDidChange:(NSNotification*)n {
     NSTextField* f = n.object;
     NSString* up = [f.stringValue uppercaseString];
@@ -167,8 +167,8 @@ namespace sq8l::gui {
 struct PlatformUiMac::Impl {
     NSView* view = nil;
     Hooks hooks;
-    SQ8LPortV1NameField* nameField = nil;
-    SQ8LPortV1NameDelegate* nameDelegate = nil;
+    SQ8LXPortV1NameField* nameField = nil;
+    SQ8LXPortV1NameDelegate* nameDelegate = nil;
 
     double scale() const { return view.bounds.size.width / kFormW; }
     // form point -> view point
@@ -191,7 +191,7 @@ struct PlatformUiMac::Impl {
         ~Released() { if (h.acquireEngine) h.acquireEngine(); }
     };
 
-    NSMenu* buildMenu(const std::vector<MenuItem>& items, SQ8LPortV1MenuTarget* target) {
+    NSMenu* buildMenu(const std::vector<MenuItem>& items, SQ8LXPortV1MenuTarget* target) {
         NSMenu* m = [[NSMenu alloc] initWithTitle:@""];
         m.autoenablesItems = NO;
         for (const MenuItem& it : items) {
@@ -249,7 +249,7 @@ PlatformUiMac::~PlatformUiMac() {
 }
 
 int PlatformUiMac::popupMenu(const std::vector<MenuItem>& items, int x, int y) {
-    SQ8LPortV1MenuTarget* target = [SQ8LPortV1MenuTarget new];
+    SQ8LXPortV1MenuTarget* target = [SQ8LXPortV1MenuTarget new];
     target.chosen = 0;
     NSMenu* m = impl_->buildMenu(items, target);
     Impl::Released unlocked(impl_->hooks);
@@ -385,14 +385,14 @@ void PlatformUiMac::focusForm() {
 void PlatformUiMac::beginNameEdit(int left, int top, int width, int height, const std::string& text) {
     Impl& I = *impl_;
     if (!I.nameField) {
-        I.nameField = [[SQ8LPortV1NameField alloc] initWithFrame:NSZeroRect];
+        I.nameField = [[SQ8LXPortV1NameField alloc] initWithFrame:NSZeroRect];
         I.nameField.bezeled = NO;
         I.nameField.bordered = NO;
         I.nameField.drawsBackground = YES;
         I.nameField.backgroundColor = NSColor.blackColor;
         I.nameField.textColor = [NSColor colorWithSRGBRed:0x78 / 255.0 green:0x79 / 255.0 blue:0x8b / 255.0 alpha:1];
         I.nameField.focusRingType = NSFocusRingTypeNone;
-        I.nameDelegate = [SQ8LPortV1NameDelegate new];
+        I.nameDelegate = [SQ8LXPortV1NameDelegate new];
         PlatformUiMac* self = this;
         I.nameDelegate.onEnd = [self](const std::string& t) {
             Impl& J = *self->impl_;
@@ -424,7 +424,7 @@ void PlatformUiMac::runModal(ModalDialog& dialog) {
     // TSelSingleForm 196x352 / TmidiSelForm 194x314 client areas (original layout, y flipped)
     const int W = sel ? 196 : 194, H = sel ? 352 : 314;
     NSPanel* panel = I.makePanel(dialog.caption, W, H);
-    SQ8LPortV1DialogController* c = [SQ8LPortV1DialogController new];
+    SQ8LXPortV1DialogController* c = [SQ8LXPortV1DialogController new];
     c.dialog = &dialog;
     c.panel = panel;
     const Hooks hooks = I.hooks;
@@ -501,7 +501,7 @@ void PlatformUiMac::showModInfo(const std::vector<std::string>& lines) {
 
 void PlatformUiMac::showAbout(const std::string& text) {
     NSAlert* a = [NSAlert new];
-    a.messageText = @"SQ8L";
+    a.messageText = @"SQ8L-X";
     std::string t;
     for (char ch : text)
         if (ch != '\r') t += ch;

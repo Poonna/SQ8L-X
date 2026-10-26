@@ -1,4 +1,4 @@
-"""End-to-end test of the BUILT VST2 plugin (build-plugin/bin/SQ8L.vst) through the VST2 ABI,
+"""End-to-end test of the BUILT VST2 plugin (build-plugin/bin/SQ8L-X.vst) through the VST2 ABI,
 against the emulated original:
 
 1. renders golden scenarios through the plugin (effSetProgram + effProcessEvents +
@@ -20,7 +20,7 @@ from harness import ROOT, SQ8LHost, effSetProgram
 from oracle_render import GOLDEN
 from render_scenarios import all_scenarios, chord_and_melody
 
-PLUGIN = os.path.join(ROOT, "build-plugin", "bin", "SQ8L.vst", "Contents", "MacOS", "SQ8L")
+PLUGIN = os.path.join(ROOT, "build-plugin", "bin", "SQ8L-X.vst", "Contents", "MacOS", "SQ8L-X")
 
 HOSTCB = C.CFUNCTYPE(C.c_ssize_t, C.c_void_p, C.c_int32, C.c_int32, C.c_ssize_t, C.c_void_p, C.c_float)
 DISPATCH = C.CFUNCTYPE(C.c_ssize_t, C.c_void_p, C.c_int32, C.c_int32, C.c_ssize_t, C.c_void_p, C.c_float)
@@ -122,8 +122,8 @@ def main():
     meta = (struct.pack('>i', port.e.uniqueID), port.e.numPrograms, port.e.numOutputs, port.e.flags)
     port.close()
     print(f"plugin: uniqueID {meta[0]}, programs {meta[1]}, outputs {meta[2]}, flags {meta[3]:#x} "
-          f"(original: b'SQ8L', 512, 2, 0x131)")
-    ok &= meta[:3] == (b"SQ8L", 512, 2)
+          f"(original: b'SQ8L', 512, 2, 0x131; SQ8L-X has its own ID, b'SQ8X')")
+    ok &= meta[:3] == (b"SQ8X", 512, 2)
     files = sorted(glob.glob(os.path.join(GOLDEN, "*.npz")))[:21]
     n_ok = 0
     for f in files:
