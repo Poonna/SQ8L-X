@@ -46,7 +46,12 @@ public:
     // Clears the integrators (nullptr) or takes another voice's state, as FilterSQ does for a
     // new note and a legato steal.
     void copyStateFrom(const FilterSvf* other);
-    double process(double x);
+    double process(double x) { return processFm(x, 0.0); }
+    // (port) One sample with the cutoff index moved by `fm` (audio-rate filter FM, FILT -> FM
+    // SRC) on top of the smoothed control-rate cutoff, clamped to the table's 0..255, whose
+    // top is held below Nyquist. The integrator gain follows the moved cutoff every sample.
+    // fm = 0 is process() exactly.
+    double processFm(double x, double fm);
 
 private:
     const SvfTable* table_ = nullptr;

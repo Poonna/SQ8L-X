@@ -155,9 +155,11 @@ def main():
     path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT
     pl = Plugin(path)
     n = pl.e.numParams
-    check(n == 229, f"{n} parameters published")
-    # FILT TYPE came after the first published list: last, so stored automation keeps its index
-    check(pl.name(228).upper() == "FILT TYPE", f"parameter 228 is FILT TYPE ('{pl.name(228)}')")
+    check(n == 231, f"{n} parameters published")
+    # FILT TYPE, then FM SRC and FM AMT came after the first published list: last, in the order
+    # they were added, so stored automation keeps its indices
+    for i, nm in ((228, "FILT TYPE"), (229, "FILT FM SRC"), (230, "FILT FM AMT")):
+        check(pl.name(i).upper() == nm, f"parameter {i} is {nm} ('{pl.name(i)}')")
     names = {pl.name(i): i for i in range(n)}
     check(len(names) == n, "names are unique")
     check(all(pl.d(effCanBeAutomated, i) == 1 for i in range(n)), "every parameter can be automated")
@@ -241,6 +243,41 @@ def main():
     before = pl.chunk()
     pl.set(ftype, 0.0)
     check(pl.chunk() != before, "the type travels in the chunk")
+
+    # FILT FM SRC / FM AMT: OFF and 0 in every factory program; the sources are named and read
+    # back; OSC3 switched on at LEVEL 0 is not heard, but as the filter FM source it changes
+    # the sound of every type, at either sign of the amount, and stays finite.
+    fsrc, famt = idx["FILT FM SRC"], idx["FILT FM AMT"]
+    pl.d(effSetProgram, 0, 0)
+    check(abs(pl.get(fsrc)) < 1e-6 and pl.display(fsrc) == "OFF" and abs(pl.get(famt) - 0.5) < 1e-6,
+          f"FM SRC/AMT of a factory program are OFF/0 ('{pl.display(fsrc)}', '{pl.display(famt)}')")
+    for s, label in enumerate(("OFF", "OSC1", "OSC2", "OSC3")):
+        pl.set(fsrc, s / 3)
+        check(pl.display(fsrc) == label and abs(pl.get(fsrc) - s / 3) < 1e-6,
+              f"FM SRC {s} shows '{pl.display(fsrc)}' and reads back")
+    pl.set(fsrc, 0.0)
+    pl.set(wave, 0.0)                               # a steady saw
+    pl.set(freq, 50 / 127)
+    pl.set(idx["DCA3 ENABLE"], 1.0)
+    pl.set(idx["DCA3 LEVEL"], 0.0)
+    pl.set(idx["OSC3 SEMI"], (7 + 12) / 24)         # a fifth up
+    for t, label in enumerate(("SQ-80", "LP2", "BP2", "HP2", "NOTCH", "LP4")):
+        pl.set(ftype, t / 5)
+        pl.set(fsrc, 0.0)
+        off = pl.render_note()
+        pl.set(fsrc, 1.0)                           # OSC3
+        on = {}
+        for amt in (63, -63):
+            pl.set(famt, (amt + 63) / 126)
+            on[amt] = pl.render_note()
+        ok = all(math.isfinite(v) and v > 1e-3 and abs(v - off) > 0.01 * off for v in on.values())
+        check(ok, f"FM from the silent OSC3 changes {label} (rms OFF {off:.4f}, +63 {on[63]:.4f}, -63 {on[-63]:.4f})")
+    before = pl.chunk()
+    pl.set(fsrc, 0.0)
+    after_src = pl.chunk()
+    pl.set(famt, 0.5)
+    check(before != after_src and after_src != pl.chunk(), "FM SRC and FM AMT travel in the chunk")
+    pl.set(ftype, 0.0)
 
     print(f"{failures} failure(s)")
     return 1 if failures else 0

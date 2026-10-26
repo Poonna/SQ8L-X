@@ -27,6 +27,11 @@
 //       rates from 44.1 to 384 kHz, resonance, fast modulation, smoothing; the CEM model's
 //       small-signal response, distortion, self-oscillation and bounds; then programs rendered
 //       with every type. Needs no files.
+//   sq8l_render_check --filter-fm
+//       Audio-rate filter FM (FILT -> FM SRC / FM AMT, a port addition): no FM is the
+//       unmodulated filter bit for bit, full-swing FM stays bounded for every type at sample
+//       rates from 44.1 to 384 kHz and grows sidebands around a carrier; OFF, amount 0 and a
+//       disabled oscillator render like OFF; extreme programs stay finite. Needs no files.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -34,8 +39,10 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "FilterCem.h"
@@ -977,6 +984,379 @@ int filterTypes() {
     return bad || progBad ? 1 : 0;
 }
 
+// Audio-rate filter FM (FILT -> FM SRC / FM AMT, a port addition). The filters alone: the
+// SQ-80 table's pole and feedback run monotonically with the cutoff (what processFm's clamp
+// relies on); processFm with no FM is process() bit for bit, for every type; full-swing FM
+// at every rate up to Nyquist, on noise, at RES 0 and 31, stays finite and bounded at sample
+// rates from 44.1 to 384 kHz; a sine through a filter whose cutoff a slower sine moves grows
+// sidebands at the carrier +- the modulator, which are not there without FM. Then whole
+// programs: no factory program has the bytes set, a source byte no version writes, an amount
+// of 0 and an oscillator whose OUTPUT is off render exactly like OFF; every type with every
+// source at +-63 and RES 31 renders finite at 44.1, 96 and 192 kHz; every voice of a chord
+// takes the setting; and FM from a silent oscillator audibly changes the sound. Needs no
+// files.
+int filterFm() {
+    using namespace sq8l;
+    constexpr double kPi = 3.14159265358979323846;
+    const char* const names[FilterType::Count] = {"SQ-80", "LP2", "BP2", "HP2", "NOTCH", "LP4", "CEM"};
+    int bad = 0;
+    uint32_t rng = 0x9e3779b9u;
+    auto next = [&rng] {
+        rng ^= rng << 13, rng ^= rng >> 17, rng ^= rng << 5;
+        return rng;
+    };
+    auto noise = [&next] { return (next() / 4294967295.0) * 2 - 1; };
+    double worstPeak[FilterType::Count] = {};
+
+    // One filter of any kind behind one interface.
+    struct Flt {
+        FilterSQ sq;
+        FilterSvf svf;
+        FilterCem cem;
+        int type;
+        Flt(const FilterTable* tq, const SvfTable* ts, const CemTable* tc, float sr, int t) : type(t) {
+            sq.init(tq, sr);
+            svf.init(ts, sr);
+            cem.init(tc, sr);
+            if (t != FilterType::Sq80 && t != FilterType::Cem) svf.setType(t);
+        }
+        void set(int32_t c, int32_t r, bool imm) {
+            if (type == FilterType::Sq80)
+                sq.setParams(c, r, imm);
+            else if (type == FilterType::Cem)
+                cem.setParams(c, r, imm);
+            else
+                svf.setParams(c, r, imm);
+        }
+        double run(double x) {
+            return type == FilterType::Sq80 ? sq.process(x) : type == FilterType::Cem ? cem.process(x) : svf.process(x);
+        }
+        double runFm(double x, double fm) {
+            return type == FilterType::Sq80 ? sq.processFm(x, fm)
+                   : type == FilterType::Cem ? cem.processFm(x, fm)
+                                             : svf.processFm(x, fm);
+        }
+    };
+
+    for (const float sr : {44100.0f, 48000.0f, 96000.0f, 192000.0f, 384000.0f}) {
+        auto tq = std::make_unique<FilterTable>();
+        tq->compute(sr);
+        SvfTable ts;
+        ts.compute(sr);
+        CemTable tcem;
+        tcem.compute(sr);
+        for (int r = 0; r < 32; r++) {
+            const float(*col)[2] = tq->entry[r];
+            int dirP = 0, dirK = 0;
+            bool mono = true;
+            for (int c = 1; c < 256; c++) {
+                const float dp = col[c][0] - col[c - 1][0], dk = col[c][1] - col[c - 1][1];
+                const int sp = dp > 0 ? 1 : (dp < 0 ? -1 : 0), sk = dk > 0 ? 1 : (dk < 0 ? -1 : 0);
+                if (sp && dirP && sp != dirP) mono = false;
+                if (sk && dirK && sk != dirK) mono = false;
+                if (sp) dirP = sp;
+                if (sk) dirK = sk;
+            }
+            if (!mono) {
+                bad++;
+                std::printf("BAD SQ-80 table at %.0f Hz, RES %d: pole or feedback not monotonic in the cutoff\n", sr, r);
+            }
+        }
+        for (int type = 0; type < FilterType::Count; type++) {
+            // No FM: bit for bit the unmodulated filter, through random parameter jumps, at a
+            // quarter of full scale (full-scale noise through unsmoothed jumps can now and then
+            // take the SQ-80 ladder past processFm's soft limit, see FilterSQ.cpp).
+            {
+                Flt a(tq.get(), &ts, &tcem, sr, type), b(tq.get(), &ts, &tcem, sr, type);
+                bool same = true;
+                for (int i = 0; i < 20000 && same; i++) {
+                    if (i % 300 == 0) {
+                        const int32_t c = int32_t(next() % 256), r = int32_t(next() % 32);
+                        const bool imm = (next() & 1) != 0;
+                        a.set(c, r, imm);
+                        b.set(c, r, imm);
+                    }
+                    const double x = noise() * 0.25;
+                    const double ya = a.run(x), yb = b.runFm(x, 0.0);
+                    same = std::memcmp(&ya, &yb, sizeof ya) == 0;
+                }
+                if (!same) {
+                    bad++;
+                    std::printf("BAD %s at %.0f Hz: processFm(x, 0) differs from process(x)\n", names[type], sr);
+                }
+            }
+            // Full swing (+-126 index steps, FM AMT +-63) as a square wave at modulator rates up
+            // to Nyquist, and as per-sample random FM, on noise: finite and bounded.
+            for (const int reso : {0, 31}) {
+                double peak = 0;
+                for (const double fmod : {5.0, 200.0, 3000.0, sr * 0.25, sr * 0.5, -1.0}) {
+                    for (const int cut : {0, 128, 255}) {
+                        Flt f(tq.get(), &ts, &tcem, sr, type);
+                        f.set(cut, reso, true);
+                        for (int i = 0; i < static_cast<int>(sr / 4); i++) {
+                            const double m = fmod < 0 ? noise() : (std::sin(2 * kPi * fmod * i / sr) >= 0 ? 1.0 : -1.0);
+                            const double y = f.runFm(noise(), 126.0 * m);
+                            if (!std::isfinite(y)) {
+                                peak = INFINITY;
+                                break;
+                            }
+                            peak = std::max(peak, std::fabs(y));
+                        }
+                    }
+                }
+                worstPeak[type] = std::max(worstPeak[type], peak);
+                if (!(peak < 50)) {
+                    bad++;
+                    std::printf("BAD %s at %.0f Hz, RES %d: full-swing FM peak %g\n", names[type], sr, reso, peak);
+                }
+            }
+        }
+    }
+    std::printf("filter FM: %d types at 5 sample rates: table monotonic, no FM = process(), full swing bounded (%s)\n",
+                int(FilterType::Count), bad ? "FAILED" : "ok");
+    for (int type = 0; type < FilterType::Count; type++)
+        std::printf("  %-5s worst full-swing peak on full-scale noise: %.2f\n", names[type], worstPeak[type]);
+
+    // Sidebands: a sine carrier at 1.3 times the cutoff, the cutoff moved by a 137 Hz sine
+    // (+-30 index steps), at 48 kHz. Goertzel power at the carrier and at carrier +- 137 Hz
+    // over the second half of 1 s (Hann window).
+    {
+        const float sr = 48000.0f;
+        auto tq = std::make_unique<FilterTable>();
+        tq->compute(sr);
+        SvfTable ts;
+        ts.compute(sr);
+        CemTable tcem;
+        tcem.compute(sr);
+        const float* hz = filterUnitTables().cutoffHz;
+        const int cut = 128;
+        const double fc = hz[cut] * 1.3, fm = 137.0;
+        auto power = [&](const std::vector<double>& y, double f) {
+            const size_t n = y.size();
+            double re = 0, im = 0;
+            for (size_t i = 0; i < n; i++) {
+                const double w = 0.5 - 0.5 * std::cos(2 * kPi * double(i) / double(n - 1));
+                re += w * y[i] * std::cos(2 * kPi * f * double(i) / sr);
+                im -= w * y[i] * std::sin(2 * kPi * f * double(i) / sr);
+            }
+            return re * re + im * im;
+        };
+        for (int type = 0; type < FilterType::Count; type++) {
+            double side[2] = {}, carrier[2] = {};
+            for (int on = 0; on < 2; on++) {
+                Flt f(tq.get(), &ts, &tcem, sr, type);
+                f.set(cut, 8, true);
+                std::vector<double> y;
+                const int n = static_cast<int>(sr);
+                for (int i = 0; i < n; i++) {
+                    const double x = std::sin(2 * kPi * fc * i / sr);
+                    const double m = on ? 30.0 * std::sin(2 * kPi * fm * i / sr) : 0.0;
+                    const double v = f.runFm(x, m);
+                    if (i >= n / 2) y.push_back(v);
+                }
+                carrier[on] = power(y, fc);
+                side[on] = power(y, fc - fm) + power(y, fc + fm);
+            }
+            const double offDb = 10 * std::log10(side[0] / carrier[0] + 1e-300);
+            const double onDb = 10 * std::log10(side[1] / carrier[1] + 1e-300);
+            std::printf("  %-5s sidebands re carrier: OFF %7.1f dB, FM %6.1f dB\n", names[type], offDb, onDb);
+            if (!(onDb > -30 && onDb > offDb + 40)) {
+                bad++;
+                std::printf("BAD %s: FM grows no sidebands\n", names[type]);
+            }
+        }
+    }
+
+    // Whole programs.
+    int progBad = 0;
+    auto failP = [&progBad](const std::string& what) {
+        progBad++;
+        std::printf("BAD %s\n", what.c_str());
+    };
+    {
+        Synth synth(44100.0f);
+        int set = 0;
+        for (int prog = 0; prog < 512; prog++) {
+            synth.setProgram(prog);
+            const Program& p = synth.editBuffer().current();
+            if (p.u8(ofs::FilterFmSource) != 0 || p.u8(ofs::FilterFmAmount) != 0) set++;
+        }
+        if (set) failP(std::to_string(set) + " factory programs have a filter FM byte set");
+    }
+    struct Setup {
+        int prog = -1;  // a factory program; -1 = INIT with all three oscillators on (below)
+        bool plainInit = false;  // INIT as it is: OSC2 and OSC3 OUTPUT off
+        int type = 0, src = 0, amt = 0, res = -1, freq = -1;
+        std::vector<int> keys{60};
+        std::vector<int> srcPerBlock;  // FM SRC per block of 512, empty = `src` throughout
+    };
+    // 1 s of the notes, held. `voicesFm`: the filter FM source every sounding voice reports at
+    // the end, -2 if they disagree.
+    auto render = [](float sr, const Setup& s, std::vector<float>& L, std::vector<float>& R, int* voicesFm = nullptr) {
+        Synth synth(sr);
+        synth.setSampleRate(sr);
+        synth.setProgram(s.prog < 0 ? 0 : s.prog);
+        Program& p = synth.editBuffer().current();
+        if (s.prog < 0) {
+            initProgram(p);
+            p.setS8(ofs::filter(0) + ofs::Filter::Freq, 50);
+            if (!s.plainInit) {
+                // OSC1's saw heard; OSC2 a fifth up and OSC3 an octave and a tritone up, both
+                // ON at LEVEL 0, so they modulate the filter without being heard.
+                p.setS8(ofs::osc(1) + ofs::Osc::Enable, 1);
+                p.setS8(ofs::osc(1) + ofs::Osc::Level, 0);
+                p.setS8(ofs::osc(1) + ofs::Osc::Semi, 7);
+                p.setS8(ofs::osc(2) + ofs::Osc::Enable, 1);
+                p.setS8(ofs::osc(2) + ofs::Osc::Level, 0);
+                p.setS8(ofs::osc(2) + ofs::Osc::Oct, 1);
+                p.setS8(ofs::osc(2) + ofs::Osc::Semi, 6);
+            }
+        }
+        p.setU8(ofs::filter(0) + ofs::Filter::Type, unsigned(s.type));
+        if (s.res >= 0) p.setS8(ofs::filter(0) + ofs::Filter::Res, s.res);
+        if (s.freq >= 0) p.setS8(ofs::filter(0) + ofs::Filter::Freq, s.freq);
+        p.setU8(ofs::FilterFmSource, unsigned(s.src));
+        p.setS8(ofs::FilterFmAmount, s.amt);
+        std::vector<RawMidiEvent> ev(s.keys.size());
+        for (size_t i = 0; i < ev.size(); i++) {
+            ev[i].deltaFrames = 0;
+            ev[i].data[0] = 0x90;
+            ev[i].data[1] = uint8_t(s.keys[i]);
+            ev[i].data[2] = 100;
+            ev[i].noteOffVelocity = 0;
+        }
+        synth.processEvents(ev.data(), int32_t(ev.size()));
+        std::vector<float> l(512), r(512);
+        const int blocks = int(sr) / 512;
+        for (int b = 0; b < blocks; b++) {
+            if (!s.srcPerBlock.empty())
+                p.setU8(ofs::FilterFmSource, unsigned(s.srcPerBlock[size_t(b) % s.srcPerBlock.size()]));
+            synth.process(l.data(), r.data(), 512, true);
+            L.insert(L.end(), l.begin(), l.end());
+            R.insert(R.end(), r.begin(), r.end());
+        }
+        if (voicesFm) {
+            *voicesFm = -1000;
+            for (int v = 0; v < Master::kMaxVoices; v++) {
+                if (synth.master().voice(v).active == 0) continue;
+                const int f = synth.master().filterFmSource(v);
+                *voicesFm = *voicesFm == -1000 || *voicesFm == f ? f : -2;
+            }
+        }
+    };
+    auto rms = [](const std::vector<float>& v) {
+        double s = 0;
+        for (const float x : v) s += double(x) * x;
+        return std::sqrt(s / double(v.size()));
+    };
+    auto peakOf = [](const std::vector<float>& v) {
+        double m = 0;
+        for (const float x : v) m = std::max(m, double(std::fabs(x)));
+        return m;
+    };
+
+    // OFF, a source byte no version writes and an amount of 0 render exactly alike, for every
+    // type, on INIT and on programs of every bank; so does FM from an oscillator whose OUTPUT
+    // is off (OSC3 of the plain INIT program).
+    int checked = 0;
+    for (const int prog : {-1, 0, 100, 200, 300, 400, 500}) {
+        for (int type = 0; type < FilterType::Count; type++) {
+            Setup s;
+            s.prog = prog;
+            s.type = type;
+            std::vector<float> L0, R0;
+            render(44100.0f, s, L0, R0);
+            const uint64_t off = hashLR(L0, R0);
+            const std::tuple<int, int, const char*> cases[] = {
+                {9, 40, "source byte 9"}, {200, -40, "source byte 200"}, {1, 0, "OSC1 at amount 0"}, {3, 0, "OSC3 at amount 0"}};
+            for (const auto& [src, amt, what] : cases) {
+                Setup t = s;
+                t.src = src;
+                t.amt = amt;
+                std::vector<float> L, R;
+                render(44100.0f, t, L, R);
+                checked++;
+                if (hashLR(L, R) != off)
+                    failP("program " + std::to_string(prog) + " " + names[type] + ": " + what + " does not render like OFF");
+            }
+        }
+    }
+    for (int type = 0; type < FilterType::Count; type++) {
+        Setup s;
+        s.plainInit = true;
+        s.type = type;
+        std::vector<float> La, Ra, Lb, Rb;
+        render(44100.0f, s, La, Ra);
+        s.src = 3, s.amt = 63;
+        render(44100.0f, s, Lb, Rb);
+        checked++;
+        if (hashLR(La, Ra) != hashLR(Lb, Rb)) failP(std::string("INIT ") + names[type] + ": OSC3 with its OUTPUT off modulates");
+    }
+    std::printf("programs: OFF, unknown source bytes, amount 0 and a disabled oscillator render alike (%d renders, %s)\n",
+                checked, progBad ? "FAILED" : "ok");
+
+    // Extremes: every type, every source, +-63, RES 31, the cutoff at the bottom, middle and
+    // top at 44.1 kHz, in the middle at 96 and 192 kHz: finite and bounded. Then a chord, and
+    // FM switched between sources every block while the notes play.
+    int extremes = 0;
+    double worst = 0;
+    for (const float sr : {44100.0f, 96000.0f, 192000.0f})
+        for (int type = 0; type < FilterType::Count; type++)
+            for (int src = 1; src <= 3; src++)
+                for (const int amt : {-63, 63})
+                    for (const int freq : {0, 64, 127}) {
+                        if (sr != 44100.0f && freq != 64) continue;
+                        Setup s;
+                        s.type = type, s.src = src, s.amt = amt, s.res = 31, s.freq = freq;
+                        std::vector<float> L, R;
+                        render(sr, s, L, R);
+                        extremes++;
+                        const double pk = std::max(peakOf(L), peakOf(R));
+                        worst = std::max(worst, pk);
+                        if (!finite(L) || !finite(R) || !(pk < 8.0))
+                            failP(std::string(names[type]) + " OSC" + std::to_string(src) + " amount " + std::to_string(amt) +
+                                  " FREQ " + std::to_string(freq) + " at " + std::to_string(int(sr)) +
+                                  " Hz: peak " + std::to_string(pk));
+                    }
+    for (int type = 0; type < FilterType::Count; type++) {
+        Setup s;
+        s.type = type, s.src = 3, s.amt = 50, s.res = 20;
+        s.keys = {48, 55, 60, 64, 67, 72};
+        std::vector<float> L, R;
+        int fmAll = 0;
+        render(44100.0f, s, L, R, &fmAll);
+        extremes++;
+        if (!finite(L) || !finite(R)) failP(std::string(names[type]) + ": chord with FM not finite");
+        if (fmAll != 2)
+            failP(std::string(names[type]) + ": not every voice of the chord follows OSC3 (" + std::to_string(fmAll) + ")");
+        s.srcPerBlock = {0, 3, 1, 0, 2};
+        std::vector<float> Ls, Rs;
+        render(44100.0f, s, Ls, Rs);
+        extremes++;
+        if (!finite(Ls) || !finite(Rs)) failP(std::string(names[type]) + ": switching FM mid-note not finite");
+    }
+    std::printf("programs: %d extreme renders finite, peak %.3f (%s)\n", extremes, worst, progBad ? "FAILED" : "ok");
+
+    // Audible: the saw through each type with FREQ 50, FM from the silent OSC3 at +40 against
+    // OFF. The difference carries at least a tenth of the level.
+    for (int type = 0; type < FilterType::Count; type++) {
+        Setup s;
+        s.type = type;
+        std::vector<float> L0, R0, L1, R1;
+        render(44100.0f, s, L0, R0);
+        s.src = 3, s.amt = 40;
+        render(44100.0f, s, L1, R1);
+        std::vector<float> d(L0.size());
+        for (size_t i = 0; i < d.size(); i++) d[i] = L1[i] - L0[i];
+        const double ratio = rms(d) / std::max(rms(L0), 1e-12);
+        std::printf("  saw, FREQ 50, %-5s: rms OFF %.4f, FM %.4f, difference %.0f%%\n", names[type], rms(L0), rms(L1),
+                    100 * ratio);
+        if (!(ratio > 0.1) || rms(L1) < 1e-3) failP(std::string(names[type]) + ": FM from OSC3 does not change the sound");
+    }
+    std::printf("programs (%s)\n", progBad ? "FAILED" : "ok");
+    return bad || progBad ? 1 : 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -985,5 +1365,6 @@ int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--direction") return direction();
     if (argc > 2 && std::string(argv[1]) == "--output-gain") return outputGain(argv[2]);
     if (argc > 1 && std::string(argv[1]) == "--filter-types") return filterTypes();
+    if (argc > 1 && std::string(argv[1]) == "--filter-fm") return filterFm();
     return golden(argc > 1 ? argv[1] : "tests/golden_raw");
 }

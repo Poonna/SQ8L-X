@@ -124,6 +124,7 @@ void FilterCem::copyStateFrom(const FilterCem* o) {
         for (int i = 0; i < 4; i++) s_[i] = t_[i] = 0;
         for (double& v : in_) v = 0;
         for (double& v : z_) v = 0;
+        for (double& v : fm_) v = 0;
         inPos_ = zPos_ = 0;
         return;
     }
@@ -186,29 +187,40 @@ void FilterCem::step(double x, double g, double r) {
     if (++zPos_ == 4 * kHalfTaps) zPos_ = 0;
 }
 
-double FilterCem::process(double x) {
+// g between the two table entries around an index, as FilterSvf: neighbours differ by about
+// 3%, so a straight line between them is as good as the tan. The index is clamped to the
+// table, whose top is below Nyquist at twice the rate, so no FM amount takes g past it.
+double FilterCem::gAt(double idx) const {
+    if (idx < 0.0) idx = 0.0;
+    if (idx > 255.0) idx = 255.0;
+    int i = static_cast<int>(idx);
+    if (i > 254) i = 254;
+    const double f = idx - i;
+    return table_->g[i] + f * (table_->g[i + 1] - table_->g[i]);
+}
+
+double FilterCem::processFm(double x, double fm) {
     const double b = 1.0 - a_;
     idx_ = idx_ * a_ + idxTarget_ * b;
     r_ = r_ * a_ + rTarget_ * b;
 
-    // g between the two table entries around the smoothed index, as FilterSvf.
-    int i = static_cast<int>(idx_);
-    if (i < 0) i = 0;
-    if (i > 254) i = 254;
-    const double f = idx_ - i;
-    const double g = table_->g[i] + f * (table_->g[i + 1] - table_->g[i]);
-
     // Upsample: the input delayed by kHalfTaps samples, then the point halfway to the next.
+    // The FM offset is delayed alongside, so with the carrier's own oscillator as the
+    // modulator the two keep their phase (which is the timbre); halfway, the average of its
+    // two neighbours. With no FM both steps see the smoothed index, as before.
     constexpr int K = kHalfTaps;
     const Halfband& h = halfband();
     in_[inPos_] = in_[inPos_ + 2 * K] = x * kDrive;
+    fm_[inPos_] = fm_[inPos_ + 2 * K] = fm;
     const double* in = in_ + inPos_ + 2 * K;  // in[-age]
+    const double* m = fm_ + inPos_ + 2 * K;   // m[-age]
     double mid = 0;
     for (int j = 0; j < K; j++) mid += h.c[j] * (in[-(K - 1 - j)] + in[-(K + j)]);
     const double now = in[-K];
+    const double fmNow = m[-K], fmMid = 0.5 * (m[-K] + m[-(K - 1)]);
     if (++inPos_ == 2 * K) inPos_ = 0;
-    step(now, g, r_);
-    step(mid, g, r_);
+    step(now, gAt(idx_ + fmNow), r_);
+    step(mid, gAt(idx_ + fmMid), r_);
 
     // Downsample: the halfband centred 2K - 1 samples back, its centre tap 1/2 and the others
     // the doubled taps halved again.

@@ -80,18 +80,24 @@ void FilterSvf::copyStateFrom(const FilterSvf* o) {
     }
 }
 
-double FilterSvf::process(double x) {
+double FilterSvf::processFm(double x, double fm) {
     const double b = 1.0 - a_;
     idx_ = idx_ * a_ + idxTarget_ * b;
     k_ = k_ * a_ + kTarget_ * b;
     gain_ = gain_ * a_ + gainTarget_ * b;
 
     // g between the two table entries around the smoothed index: neighbours differ by about
-    // 3%, so a straight line between them is as good as the tan itself.
-    int i = static_cast<int>(idx_);
-    if (i < 0) i = 0;
+    // 3%, so a straight line between them is as good as the tan itself. That holds for the
+    // index the filter FM moves every sample too; the table's top entry is clamped below
+    // Nyquist, so no amount takes g past it. The trapezoidal SVF copes with g changing every
+    // sample (render_check --filter-fm drives it with full-swing FM at RES 31 and checks the
+    // output stays bounded).
+    double idx = idx_ + fm;
+    if (idx < 0.0) idx = 0.0;
+    if (idx > 255.0) idx = 255.0;
+    int i = static_cast<int>(idx);
     if (i > 254) i = 254;
-    const double f = idx_ - i;
+    const double f = idx - i;
     const double g = table_->g[i] + f * (table_->g[i + 1] - table_->g[i]);
 
     // One SvfLinearTrapOptimised2 tick: v1 band, v2 low.

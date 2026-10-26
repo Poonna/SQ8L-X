@@ -140,6 +140,15 @@ struct OscDirection {
     uint32_t stop = 0;
 };
 
+// (port) The last two DOC samples of each oscillator, before its DCA (the wave byte - 128),
+// for the master's audio-rate filter FM (FILT -> FM SRC). Kept outside the image for the
+// same reason as VoiceClock; render() only writes it, so nothing the original computes
+// changes. A halted or disabled oscillator reads 0, as it plays.
+struct OscTap {
+    int32_t prev = 0;
+    int32_t cur = 0;
+};
+
 struct VoiceClock {
     uint32_t phaseInc = 0;        // this voice's resampler increment
     float smoothPole = 0;         // DCA pole at this voice's clock
@@ -186,6 +195,10 @@ public:
     // One output sample of voice v (FUN_0045c7f4): in the original it is left in ST0 for the
     // filter. Run inside RoundTowardZero like all of processReplacing.
     double render(uint32_t v);
+    // (port) Oscillator `osc` of voice v as of the last render(), before its DCA, in -1..1
+    // (the sample scale the sum uses): the last two DOC samples interpolated at the
+    // resampler phase that render() evaluated. 0 for a voice out of range.
+    double oscSample(uint32_t v, int osc) const;
 
     // ---- state, laid out as in the original object (offsets from the object start) ----
     // +0x0000 vmt
@@ -223,6 +236,9 @@ public:
 
     // (port) per-oscillator playback direction, outside the image: see OscDirection.
     OscDirection direction[kMaxVoices][3] = {};
+
+    // (port) per-oscillator output before the DCA, outside the image: see OscTap.
+    OscTap tap[kMaxVoices][3] = {};
 
     // ---- internal helpers (public for the differential tests) ----
     // DCA level (0..0x7f00) -> amplitude, interpolating kDocLevelTable (FUN_0045c568).

@@ -109,6 +109,10 @@ public:
     virtual MasterDocParams& docVoiceParams(int voice) = 0;          // FUN_0045c7e0
     virtual void docUpdate(int voice) = 0;                          // FUN_0045bda4 (after the params are written)
     virtual double docRender(int voice) = 0;                        // FUN_0045c7f4: one sample (ST0)
+    // (port) no counterpart in the original: oscillator `osc` (0..2) of the voice as of the last
+    // docRender, before its DCA, in -1..1. Read only for the audio-rate filter FM (FILT -> FM
+    // SRC), right after docRender. See docs/modules/master.md.
+    virtual double docOscSample(int voice, int osc) = 0;
     virtual int32_t docReleaseSamples() = 0;                        // read of doc+0x209c
 
     // ------------------------------------------------------------ Csq_lfo (4 per voice)

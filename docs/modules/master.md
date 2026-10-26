@@ -419,3 +419,49 @@ response of each SVF type at 44.1-384 kHz, resonance, fast modulation and smooth
 the small-signal response against the formula above, distortion against the level,
 self-oscillation (RES 31 rings at every cutoff, RES 27 dies away), fast modulation of a
 loud input and smoothing; and whole programs with every type.
+
+## Filter FM (port addition)
+
+FILT -> FM SRC / FM AMT (`ofs::FilterFmSource` / `ofs::FilterFmAmount`, program bytes
+0x13d / 0x13e, `programFilterFmSource` / `programFilterFmAmount`, see
+[program.md](program.md#filt-fm-src--fm-amt-port-addition-0x13d-0x13e)) move the filter cutoff
+at audio rate by one of the voice's oscillators. The original has nothing like it: every
+modulation source reaches the filter through `controlUpdate` at the control rate.
+
+`controlUpdate` reads both at every full tick into `fmSource_[v]` (the oscillator 0..2, -1 =
+OFF) and `fmDepth_[v]` (AMT * 2 cutoff index steps per unit of the oscillator's output, i.e.
+AMT FREQ steps at full swing). `processVoice` then branches once per sample:
+
+* OFF (every program the original made, the constructor's value, and a source byte outside
+  1..3): `process` of the type the voice plays, the code above, untouched (243/243
+  regression renders).
+* On: right after `docRender`, `VoiceModules::docOscSample(v, src)` gives the oscillator's
+  sample, which times `fmDepth_` is the offset in index steps for `processFm` of the type the
+  voice plays.
+
+The modulator is the oscillator **before its DCA** (`Doc::oscSample`: the last two DOC samples
+of that oscillator, `wave byte - 128` scaled like the sum, interpolated at the resampler phase
+`render` used; kept in `Doc::tap`, outside the original's image like `clock` and `direction`).
+Before rather than after, so that an oscillator switched ON at LEVEL 0 is a filter modulator
+nobody hears, and the depth is FM AMT alone, not also the oscillator's level, DCA modulation
+or AM. An oscillator whose OUTPUT is off is halted by the DOC and reads 0, except OSC1
+while it is the SYNC or AM source of an enabled OSC2, which the DOC keeps running silently.
+
+`FilterSvf::processFm` adds the offset to the smoothed index, clamps it to 0..255 and
+interpolates g as before: the table's top is below Nyquist at any sample rate, and g follows
+the cutoff every sample. `FilterCem::processFm` does the same at twice the rate, for both of
+its steps: its upsampler delays the input by 8 samples, so the offset is delayed by as many
+(the step halfway takes the average of its neighbours) to stay in phase with the audio it
+moves, which matters when the modulator is the carrier's own oscillator; the Newton solve
+copes with g changing every step. `FilterSQ::processFm` keeps the original's smoothed p, k
+and g and adds to them the difference the table makes between the target cutoff and the
+moved one (interpolated, pole clamped to the column's range, feedback likewise; the column
+runs monotonically, which the check verifies). Being a linear ladder, the SQ-80 filter can
+pump energy in under fast, deep FM near self-oscillation and run away, so its FM path
+soft-limits every stage above 32 (the unmodulated stages reach about 10 to 15 on full-scale
+noise through unsmoothed jumps of cutoff and resonance, rarely more), which bounds the output
+near 33. With no FM every `processFm` is its `process` bit for bit (FilterSQ's below that
+limit). `render_check --filter-fm` checks all this, plus sidebands around a carrier,
+full-swing FM at 44.1-384 kHz on every type, and whole programs (OFF / amount 0 / unknown
+source / disabled oscillator render like OFF; extremes stay finite; every voice of a chord
+follows).

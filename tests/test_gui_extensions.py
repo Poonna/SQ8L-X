@@ -521,6 +521,36 @@ def main():
         check(ed.program_byte(off) == value and ed.program_byte(0x110) == 0,
               f"FILT item {item} still writes program byte {off:#x} ({ed.program_byte(off)})")
 
+    # 6c. FILT -> FM SRC / FM AMT: the audio-rate filter FM, on a second FILT sub-page laid out
+    # like a MODS slot (program bytes 0x13d and 0x13e). The first sub-page keeps its items.
+    print("Filter FM:")
+    FM_SUB, FM_SRC, FM_AMT = 1, 2, 4  # item indices
+    subs = ed.pages()[FILT_PAGE]["subs"]
+    check(len(subs) == 2 and len(subs[0]["params"]) == len(params),
+          f"FILT has two sub-pages and the first is unchanged ({len(subs)})")
+    fm = {p["name"]: p for p in subs[FM_SUB]["params"]} if len(subs) > 1 else {}
+    s, a = fm.get("FM SRC", {}), fm.get("FM AMT", {})
+    check(s.get("knob") == 1 and s.get("paramIndex") == 288 and s.get("min") == 0 and s.get("max") == 3,
+          f"FM SRC on knob 1, parameter 288, 0..3 ({s.get('knob')}, {s.get('paramIndex')})")
+    check(a.get("knob") == 2 and a.get("paramIndex") == 289 and a.get("min") == -63 and a.get("max") == 63,
+          f"FM AMT on knob 2, parameter 289, -63..+63 ({a.get('knob')}, {a.get('paramIndex')})")
+    L.sq8l_gl_ctr(ed.v, 0, FILT_PAGE, FM_SUB)
+    ed.idle()
+    row = ed.lcd_row(0).replace("\x00", " ")
+    check(row.startswith("FILT FM=   OFF  * +00") and ed.program_byte(0x13D) == 0 and ed.program_byte(0x13E) == 0,
+          f"a program of the original has no filter FM: {row[:44]!r}")
+    for value, name in ((1, "OSC1"), (2, "OSC2"), (3, "OSC3"), (0, "OFF ")):
+        L.sq8l_gl_ctr(ed.v, 1, FM_SRC, value)
+        ed.idle()
+        shown = ed.lcd_row(0)[s.get("x", 0):s.get("x", 0) + 6]
+        check(name in shown and ed.program_byte(0x13D) == value,
+              f"FM SRC {value}: display {shown!r}, program byte {ed.program_byte(0x13D)}")
+    for value in (63, -63, 0):
+        L.sq8l_gl_ctr(ed.v, 1, FM_AMT, value)
+        ed.idle()
+        check(ed.program_byte(0x13E) == value & 0xFF and ed.program_byte(0x13D) == 0,
+              f"FM AMT {value} writes program byte 0x13e ({ed.program_byte(0x13E)})")
+
     # 7. the knobs a page does not use are inactive (issue #24: drawn faded)
     print("Inactive knobs:")
     for page, sub in ((EMU_PAGE, EMU_SUB), (0, 0)):

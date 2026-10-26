@@ -208,6 +208,16 @@ inside any of them would be overwritten on load and written back on save — the
 * A phase reset starts a reversed oscillator at `top`. A flip while a note sounds leaves the
   accumulator alone: the wave turns round where it stands.
 
+## Oscillator taps for the filter FM (port addition)
+
+`render` keeps the last two samples of each oscillator before its DCA (`wave byte - 128`,
+halted or disabled = 0) in `Doc::tap` (`OscTap`), outside the image like `clock` and
+`direction`; it only writes them, so nothing it computes changes. `oscSample(v, osc)`
+interpolates them at the resampler phase `render` just used and scales them like the sum
+(`sampleScale`), giving -1..1. The master reads it through `VoiceModules::docOscSample` for the
+audio-rate filter FM (FILT -> FM SRC, see [master.md](master.md#filter-fm-port-addition)).
+`resetVoice` clears the taps.
+
 ## Verification
 
 `sq8l_render_check --direction` (no files needed) clocks a single oscillator at the DOC rate

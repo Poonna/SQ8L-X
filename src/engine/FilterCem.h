@@ -43,7 +43,10 @@ public:
     // Clears the filter (nullptr) or takes another voice's state, as FilterSQ does for a new
     // note and a legato steal.
     void copyStateFrom(const FilterCem* other);
-    double process(double x);
+    double process(double x) { return processFm(x, 0.0); }
+    // (port) FILT -> FM SRC / FM AMT: as process, with the cutoff index moved by `fm` steps
+    // this sample (audio-rate filter FM, see Master::processVoice). With fm 0 it is process.
+    double processFm(double x, double fm);
 
     // The resonance gain r of a RES value 0..31 (4 = the linear oscillation threshold), and
     // the share of the input fed forward to the resonance node: a small signal sees
@@ -57,6 +60,7 @@ public:
 
 private:
     void step(double x, double g, double r);  // one sample at twice the rate into z_
+    double gAt(double idx) const;             // g of a (fractional) cutoff index, clamped
 
     const CemTable* table_ = nullptr;
     double a_ = 0;  // one-pole smoothing factor per sample (FilterSQ's)
@@ -72,6 +76,9 @@ private:
     // on) so the last length of samples always lies in one piece.
     double in_[4 * kHalfTaps] = {};
     double z_[8 * kHalfTaps] = {};
+    // The filter FM offsets, in a ring like in_ (same positions): the input reaches the stages
+    // kHalfTaps samples late, and the modulator is delayed as much to stay in step with it.
+    double fm_[4 * kHalfTaps] = {};
     int inPos_ = 0, zPos_ = 0;
 };
 

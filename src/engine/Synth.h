@@ -53,6 +53,7 @@ public:
     MasterDocParams& docVoiceParams(int v) override;
     void docUpdate(int v) override { doc.update(static_cast<uint32_t>(v)); }
     double docRender(int v) override { return doc.render(static_cast<uint32_t>(v)); }
+    double docOscSample(int v, int osc) override { return doc.oscSample(static_cast<uint32_t>(v), osc); }
     int32_t docReleaseSamples() override { return doc.releaseSamples; }
 
     void lfoSetControlRate(int v, int i, float rate) override { lfo[v][i].setControlRate(rate); }

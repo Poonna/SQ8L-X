@@ -204,6 +204,7 @@ void Doc::resetVoice(uint32_t v) {
     vc.smoothMode = 2;
     setVoiceClock(v, 1.0);  // (port) a reset slot is never left on a scaled clock
     for (OscDirection& d : direction[v]) d = OscDirection{};  // (port) nor on a stale direction
+    for (OscTap& t : tap[v]) t = OscTap{};  // (port) nor with a stale filter FM tap
     for (int i = 0; i < 3; i++) {
         DocOsc& o = vc.osc[i];
         o.levelCur = levelToAmp(0);
@@ -612,6 +613,10 @@ double Doc::render(uint32_t v) {
         const int32_t s0 = stepOscillator(vc, 0, dir[0]);
         const int32_t s1 = stepOscillator(vc, 1, dir[1]);
         const int32_t s2 = stepOscillator(vc, 2, dir[2]);
+        OscTap* tp = tap[v];  // (port) filter FM, see OscTap
+        tp[0].prev = tp[0].cur, tp[0].cur = s0;
+        tp[1].prev = tp[1].cur, tp[1].cur = s1;
+        tp[2].prev = tp[2].cur, tp[2].cur = s2;
         DocOsc* o = vc.osc;
         double sum;
         if (vc.amMode == 0) {
@@ -709,6 +714,13 @@ double Doc::render(uint32_t v) {
         return y;
     }
     return out;
+}
+
+double Doc::oscSample(uint32_t v, int osc) const {
+    if (v >= numVoices || osc < 0 || osc > 2) return 0.0;
+    const OscTap& t = tap[v][osc];
+    const double ph = static_cast<double>(static_cast<int32_t>(voice[v].prevPhase)) * phaseScale;
+    return (t.prev + (t.cur - t.prev) * ph) * sampleScale;
 }
 
 }  // namespace sq8l

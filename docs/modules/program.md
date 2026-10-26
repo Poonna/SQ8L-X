@@ -299,8 +299,8 @@ still be preserved.
 | 0x13a | 0x118 | 279 | s8 | SAT (saturation) | -1..15 | 0 | -1 OFF, 0 EMU, 1..15; voice: amp FUN_0045e89c |
 | 0x13b | 0x119 | 280 | bits 0:2 2:1 3:1 4:1 5:1 6:1 7:1 | emulation bits 2 |  | 0x00 | b0-1 ?, b2 MUFFLE (OFF/ON), b3-7 ? |
 | 0x13c | 0x11a | 287 | s8 | filter key mode |  | 0 | value-1 -> filter setKeyParam (FUN_0045f560); 0 in all sounds |
-| 0x13d | 0x11b | 288 | s8 | (unused) |  | 0 |  |
-| 0x13e | 0x11c | 289 | s8 | (unused) |  | 0 |  |
+| 0x13d | 0x11b | 288 | s8 | FILT FM SRC (port addition) | 0..3 | 0 | FILT page 2; 0 (the original, every import) = OFF, 1..3 OSC1..OSC3, see below |
+| 0x13e | 0x11c | 289 | s8 | FILT FM AMT (port addition) | -63..+63 | 0 | FILT page 2; CUT steps at the oscillator's full swing, see below |
 | 0x13f | 0x11d | 290 | s8 | (unused) |  | 0 |  |
 | 0x140 | 0x11e | 291 | s16 | block 0x140+0x0: s16 #0 |  | 0 | not in the GUI |
 | 0x142 | 0x120 | 292 | s16 | block 0x140+0x0: s16 #1 |  | 0 | not in the GUI |
@@ -558,3 +558,28 @@ reads as 0 and keeps the original's filter:
 A value outside 0..6 is treated as 0 (no version of the port writes one). The SysEx export
 cannot carry the type, like everything else outside the SQ-80's 204 nybbles. With type 0
 (every existing program) the render is bit-exact (243/243 regression renders).
+
+## FILT FM SRC / FM AMT (port addition, 0x13d, 0x13e)
+
+The audio-rate filter FM (second FILT sub-page, `ofs::FilterFmSource` / `ofs::FilterFmAmount`,
+parameters 288 and 289, `programFilterFmSource` / `programFilterFmAmount`): FM SRC 0 OFF,
+1..3 OSC1..OSC3, the oscillator whose wave (before its DCA) moves the cutoff every sample;
+FM AMT -63..+63, in FREQ (CUT) steps at that oscillator's full swing. See
+[master.md](master.md#filter-fm-port-addition) for the engine side.
+
+They are two of the three spare bytes after the filter key mode (0x13c), and like TYPE, VOICES
+and DIR ones nothing ever writes, so every program that predates the port reads as OFF:
+
+* the original has no page for them and copies whole records, so its programs, libraries,
+  banks and backup files all have 0 there, and it preserves values the port stored;
+* `initProgram` zeroes the record and writes nothing there;
+* neither SysEx import reaches them: they write the DCA4 block only up to the pan mod slot
+  (0x139) and resume at the modes (0x170);
+* `convertOldProgram` writes 0x122..0x129, the DCA4 block and SAT (0x13a), then resumes at
+  0x170.
+
+`render_check --filter-fm` also checks that none of the 512 factory programs has either byte
+set. A source byte outside 0..3 reads as OFF and an amount outside -63..+63 is clamped (no
+version of the port writes one). The SysEx export cannot carry them. With FM SRC OFF (every
+existing program) the render is bit-exact (243/243 regression renders), and so it is with a
+source but an amount of 0.

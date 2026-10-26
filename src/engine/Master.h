@@ -123,6 +123,8 @@ public:
     const FilterSvf& svf(int voice) const { return svfs_[voice]; }
     const FilterCem& cem(int voice) const { return cems_[voice]; }
     int filterType(int voice) const { return filterType_[voice]; }
+    // (port) the oscillator a voice's filter FM follows, -1 = OFF (FILT -> FM SRC)
+    int filterFmSource(int voice) const { return fmSource_[voice]; }
     float volume() const { return volume_; }
 
 private:
@@ -225,6 +227,11 @@ private:
     CemTable cemTable_{};
     FilterCem cems_[kMaxVoices];
     int32_t filterType_[kMaxVoices] = {};
+    // (port) FILT -> FM SRC / FM AMT, read at every full control tick: the oscillator 0..2 a
+    // voice's filter cutoff follows at audio rate (-1 = OFF: process() as the original) and
+    // the cutoff index steps per unit of that oscillator's output.
+    int32_t fmSource_[kMaxVoices];  // all -1 from the constructor
+    double fmDepth_[kMaxVoices] = {};
     int32_t tickToggle_ = 0;                          // +0x11004
     float smoothB_ = 0;                               // +0x11008 (computed, never used)
     float smoothA_ = 0;                               // +0x1100c (computed, never used)

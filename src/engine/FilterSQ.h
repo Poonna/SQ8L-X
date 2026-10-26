@@ -58,6 +58,12 @@ public:
 
     // One sample (FUN_0045f578): input and output live on the x87 stack.
     double process(double x);
+    // (port) One sample with the cutoff moved by `fm` cutoff index steps (audio-rate filter FM,
+    // FILT -> FM SRC). Not in the original: the master calls it only while FM SRC is not OFF,
+    // so a voice without filter FM runs process() above and nothing else. fm = 0 is process()
+    // exactly while the stages stay below the soft limit that keeps deep FM bounded (32, see
+    // FilterSQ.cpp).
+    double processFm(double x, double fm);
 
 private:
     void computeSmoothing();       // FUN_0045f120
