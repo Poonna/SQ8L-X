@@ -76,6 +76,7 @@ Master::Master(VoiceModules& modules, int32_t sampleRate, const int32_t* overrid
     // Filters are created while master+0xf70 is still 0 (FUN_0045ef38 with sr 0).
     for (auto& pair : filters_)
         for (auto& f : pair) f.init(&filterTable_, 0.0f);
+    for (auto& f : svfs_) f.init(&svfTable_, 0.0f);  // (port) FILT -> TYPE
     setSampleRateInt(sampleRate);
     setControlRate(kDefaultControlRate);
     setVoices(kOriginalPlayableVoices, kOriginalFadeVoices);  // FUN_00463358(8, 8)
@@ -124,8 +125,10 @@ int32_t Master::setSampleRateInt(int32_t sr) {
     for (int v = 0; v < kMaxVoices; v++) {
         modules_.ampSetSampleRate(v, static_cast<float>(sr));
         for (auto& f : filters_[v]) f.setSampleRate(static_cast<float>(sr));
+        svfs_[v].setSampleRate(static_cast<float>(sr));
     }
     filterTable_.compute(static_cast<float>(sr));
+    svfTable_.compute(static_cast<float>(sr));
     setControlRate(controlRate_);
     reset();
     error_ = 0;
@@ -585,10 +588,14 @@ void Master::startVoice(int32_t slot, int32_t noteId, bool newNote, NoteRecord* 
     if (newNote) {
         if (!legatoSteal) {
             filters_[slot][0].copyStateFrom(nullptr);
+            svfs_[slot].copyStateFrom(nullptr);
+            filterType_[slot] = programFilterType(prog);
             modules_.ampStart(slot, -1);
         } else {
             const int other = vindex(*v.stolenFrom);
             filters_[slot][0].copyStateFrom(&filters_[other][0]);
+            svfs_[slot].copyStateFrom(&svfs_[other]);
+            filterType_[slot] = filterType_[other];
             modules_.ampStart(slot, other);
         }
         v.dca4Mode = ovrDca4Smooth_ > 0 ? (ovrDca4Smooth_ - 1) & 1 : (prog[0x196] >> 1) & 1;
@@ -957,7 +964,26 @@ void Master::controlUpdate(Voice& v) {
     fmod += mul32(modSource(&v, word(F + 7)), s8(F[9]));
     fmod += mul32(v.key, s8(F[2])) * 2;
     fmod += (modSource(&v, 0x5a) - 0x40) * 64 * 3;
-    flt.setParams(s8(F[0]) * 2 + fmod / 64, s8(F[1]), v.tickCount == 0);
+    const int32_t cutoff = s8(F[0]) * 2 + fmod / 64;
+    flt.setParams(cutoff, s8(F[1]), v.tickCount == 0);
+    // (port) FILT -> TYPE: the other types take the same cutoff and resonance. A voice that
+    // switches between FilterSQ and the SVF while it plays starts the one taking over clear
+    // and on its target. A voice that stays on type 0 runs only the original's code above.
+    const int type = programFilterType(prog);
+    const int was = filterType_[vi];
+    if (type != was) {
+        filterType_[vi] = type;
+        if (type == 0) {
+            flt.copyStateFrom(nullptr);
+            flt.setParams(cutoff, s8(F[1]), true);
+        } else if (was == 0) {
+            svfs_[vi].copyStateFrom(nullptr);
+        }
+    }
+    if (type != 0) {
+        svfs_[vi].setType(type);
+        svfs_[vi].setParams(cutoff, s8(F[1]), v.tickCount == 0 || was == 0);
+    }
 
     // Amp
     modules_.ampSetSaturation(vi, s8(P[0x118]));
@@ -1000,7 +1026,7 @@ bool Master::processVoice(Voice& v, float* acc) {
     }
     if (!modules_.envActive(vi, 3) && !(modules_.ampRampCount(vi) > -modules_.docReleaseSamples())) return true;
     double x = modules_.docRender(v.slot);
-    x = filters_[vi][0].process(x);
+    x = filterType_[vi] == 0 ? filters_[vi][0].process(x) : svfs_[vi].process(x);  // (port) FILT -> TYPE
     bool finished = false;
     if (v.fading == 0) {
         modules_.ampProcess(vi, x, acc);

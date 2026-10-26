@@ -155,7 +155,9 @@ def main():
     path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT
     pl = Plugin(path)
     n = pl.e.numParams
-    check(n == 228, f"{n} parameters published")
+    check(n == 229, f"{n} parameters published")
+    # FILT TYPE came after the first published list: last, so stored automation keeps its index
+    check(pl.name(228).upper() == "FILT TYPE", f"parameter 228 is FILT TYPE ('{pl.name(228)}')")
     names = {pl.name(i): i for i in range(n)}
     check(len(names) == n, "names are unique")
     check(all(pl.d(effCanBeAutomated, i) == 1 for i in range(n)), "every parameter can be automated")
@@ -219,6 +221,26 @@ def main():
     pl.d(effSetProgram, 0, 0)
     check(pl.display(voices) == "8" or abs(pl.get(voices) * 63 + 1 - 8) < 0.01,
           f"VOICES of a factory program shows 8 ('{pl.display(voices)}')")
+
+    # FILT TYPE: every factory program has the original's filter; each type is named, lands
+    # in the program and changes the sound.
+    ftype = idx["FILT TYPE"]
+    pl.d(effSetProgram, 0, 0)
+    check(abs(pl.get(ftype)) < 1e-6 and pl.display(ftype) == "SQ-80",
+          f"FILT TYPE of a factory program is SQ-80 ('{pl.display(ftype)}')")
+    pl.set(wave, 0.0)                               # a steady saw
+    pl.set(freq, 64 / 127)                          # the cutoff in the middle
+    rms = {}
+    for t, label in enumerate(("SQ-80", "LP2", "BP2", "HP2", "NOTCH", "LP4")):
+        pl.set(ftype, t / 5)
+        shown = pl.display(ftype)
+        rms[label] = pl.render_note()
+        check(shown == label and abs(pl.get(ftype) - t / 5) < 1e-6 and rms[label] > 1e-3,
+              f"FILT TYPE {t} shows '{shown}', reads back and sounds (rms {rms[label]:.4f})")
+    check(len({round(v, 6) for v in rms.values()}) == 6, "the six types sound different")
+    before = pl.chunk()
+    pl.set(ftype, 0.0)
+    check(pl.chunk() != before, "the type travels in the chunk")
 
     print(f"{failures} failure(s)")
     return 1 if failures else 0

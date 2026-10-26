@@ -1,6 +1,8 @@
 #include "HostParams.h"
 
+#include <algorithm>
 #include <cctype>
+#include <iterator>
 #include <set>
 
 #include "EditBuffer.h"
@@ -44,10 +46,19 @@ std::string prefixOf(const LcdSubPage& sp) {
 // The formatters that name values; the three defaults (OFF/ON aside) only pad numbers.
 bool namesValues(Fmt f) { return f != Fmt::None && f != Fmt::Unsigned && f != Fmt::Signed && f != Fmt::Polyphony; }
 
+// The edit buffer parameters added to the pages after the first published list (228
+// parameters), in the order they were added: they are published after all the others.
+// Append only.
+constexpr int kAppended[] = {
+    245,  // FILT TYPE
+};
+
+bool appended(int idx) { return std::find(std::begin(kAppended), std::end(kAppended), idx) != std::end(kAppended); }
+
 std::vector<HostParam> build() {
     const std::vector<LcdPage> pages = buildLcdPages();
     const Program init = makeInitProgram();
-    std::vector<HostParam> out;
+    std::vector<HostParam> out, late;
     std::set<int> seen;
     // The pages in order, the OSC1-3 overview (page 0) last: everything on it is also on the
     // page of its oscillator, where it has the oscillator's name.
@@ -74,9 +85,12 @@ std::vector<HostParam> build() {
                         s = trim(s);
                         p.valueTexts.push_back(s.empty() ? delphi::intToStr(v) : s);
                     }
-                out.push_back(std::move(p));
+                (appended(idx) ? late : out).push_back(std::move(p));
             }
     }
+    for (const int idx : kAppended)
+        for (HostParam& p : late)
+            if (p.editIndex == idx) out.push_back(std::move(p));
     return out;
 }
 

@@ -12,6 +12,10 @@
 //  * WF= on the OSC1-3 and LFO pages too, so the label reads the same everywhere. The LFO
 //    field spends the freed column on 6 cells, enough for Fmt::LfoWave to spell the wave
 //    names out instead of the two digits 4 columns forced.
+//  * TYPE on the FILT page, the filter type (parameter 245, program byte 0x110), in the 11
+//    columns between RES and KEYB, on knob 2 (the third). It is item 3 of the page, so the
+//    items after it moved up by one, and it takes an ordinal, so KEYBD names its parameter
+//    outright.
 #include "../LcdData.h"
 
 namespace sq8l::gui::data {
@@ -106,11 +110,12 @@ static const ParamSetup kParams_3_1[] = {
 static const ParamSetup kParams_4_0[] = {
     {1, "Filter cutoff frequency", -1, Fmt::None, PopText::None, true, 0, Change::None},  // FREQ
     {2, "Filter resonance (Q)", -1, Fmt::None, PopText::None, true, 0, Change::None},  // RES
-    {3, "Keyboard follow (frequency is modulated by key position)", -1, Fmt::None, PopText::None, true, 0, Change::None},  // KEYBD
-    {5, "Frequency modulation source 1", 241, Fmt::ModSource, PopText::ModSource, false, 0, Change::None},  // MOD1.SEL
-    {7, "Frequency modulation amount 1", 242, Fmt::None, PopText::None, true, 0, Change::None},  // MOD1.AMT
-    {8, "Frequency modulation source 2", 243, Fmt::ModSource, PopText::ModSource, false, 0, Change::None},  // MOD2.SEL
-    {10, "Frequency modulation amount 2", 244, Fmt::None, PopText::None, true, 0, Change::None},  // MOD2.AMT
+    {3, "Filter type (SQ-80=the original 4-pole lowpass, LP2/BP2/HP2=2-pole low/band/highpass, NOTCH=band reject, LP4=4-pole lowpass)", 245, Fmt::FilterType, PopText::None, true, 0, Change::None},  // (port) TYPE
+    {4, "Keyboard follow (frequency is modulated by key position)", 239, Fmt::None, PopText::None, true, 0, Change::None},  // KEYBD
+    {6, "Frequency modulation source 1", 241, Fmt::ModSource, PopText::ModSource, false, 0, Change::None},  // MOD1.SEL
+    {8, "Frequency modulation amount 1", 242, Fmt::None, PopText::None, true, 0, Change::None},  // MOD1.AMT
+    {9, "Frequency modulation source 2", 243, Fmt::ModSource, PopText::ModSource, false, 0, Change::None},  // MOD2.SEL
+    {11, "Frequency modulation amount 2", 244, Fmt::None, PopText::None, true, 0, Change::None},  // MOD2.AMT
 };
 static const ParamSetup kParams_5_0[] = {
     {1, "Amount of amplitude modulation by envelope 4 (=main volume)", -1, Fmt::None, PopText::None, true, 0, Change::None},  // ENV4.AMT
@@ -357,9 +362,9 @@ const PageSetup kPages[kNumPages] = {
         {"OSC3", 3, 2, 38, 0, 0, 0, kParams_3_0, 9},
         {"DCA3", 3, 2, 49, 0, 1, 0, kParams_3_1, 6},
      }},
-    {"[FILT][CUT={0,FREQ,3,0,127}] [RES={1,RES,2,0,31}] 11 [KEYB * {4,KEYBD,3,-63,+63}]\\&5 [MODS=] 2 [{6,MOD1.SEL,6,-1,145}] [*] [{7,MOD1.AMT,4,-127,+127}] 2 [{8,MOD2.SEL,6,-1,145}] [*] [{9,MOD2.AMT,4,-127,+127}]",
+    {"[FILT][CUT={0,FREQ,3,0,127}] [RES={1,RES,2,0,31}] [TYPE={2,TYPE,5,0,5}] [KEYB * {4,KEYBD,3,-63,+63}]\\&5 [MODS=] 2 [{6,MOD1.SEL,6,-1,145}] [*] [{7,MOD1.AMT,4,-127,+127}] 2 [{8,MOD2.SEL,6,-1,145}] [*] [{9,MOD2.AMT,4,-127,+127}]",
      1, {
-        {"Filter", 4, 4, 237, 0, 0, 0, kParams_4_0, 7},
+        {"Filter", 4, 4, 237, 0, 0, 0, kParams_4_0, 8},
      }},
     {"[DCA4] [ENV4 * {0,ENV4.AMT,2,0,63}] 5 [SAT={2,SAT,3,-1,15}] 2 [PAN={3,PAN,3,-63,+63}]\\&5 [MODS=] 3 [{6,AMOD.SEL,6,-1,145}] [*] [{7,AMOD.AMT,3,-63,+63}] 3 [{8,PMOD.SEL,6,-1,145}] [*] [{9,PMOD.AMT,4,-127,+127}]",
      1, {
