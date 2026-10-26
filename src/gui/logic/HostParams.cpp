@@ -51,6 +51,8 @@ bool namesValues(Fmt f) { return f != Fmt::None && f != Fmt::Unsigned && f != Fm
 // Append only.
 constexpr int kAppended[] = {
     245,  // FILT TYPE
+    288,  // FILT FM SRC
+    289,  // FILT FM AMT
 };
 
 bool appended(int idx) { return std::find(std::begin(kAppended), std::end(kAppended), idx) != std::end(kAppended); }

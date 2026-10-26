@@ -1,6 +1,7 @@
 #include "FilterSQ.h"
 #include "CrMath.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "Fpu.h"
@@ -218,6 +219,67 @@ double FilterSQ::process(double x) {
     y = y * g + a3;
     stage[3] = sgl(y);
     y = y * g + a4;
+    stage[4] = sgl(y);
+    const double out = y * gain;
+    g = sgl((1.0f + static_cast<double>(p)) * half);
+    p = sgl(static_cast<double>(p) * pA + pTarget);
+    k = sgl(static_cast<double>(k) * kA + kTarget);
+    gain = sgl(static_cast<double>(gain) * gainA + gainTarget);
+    return out;
+}
+
+// (port) The smoothed coefficients (p, k, g) and the stages stay the original's; the FM adds
+// to the pole and its feedback the difference the table makes between the target cutoff and
+// the moved one, interpolated between entries. So the filter is, every sample, the
+// original's filter at the moved cutoff (exactly so once the smoothing has settled). The pole
+// is clamped to the table's range, whose top is held below Nyquist (0.49 sr), and the
+// feedback to the range of the same table column, which render_check --filter-fm checks
+// runs monotonically with the pole.
+//
+// Moved fast and far near self-oscillation, the ladder pumps energy in (parametric
+// resonance) and, being linear, runs away. A soft limit on every stage keeps it bounded, as
+// the clipping of an analog ladder does. It starts at 32: without FM the stages reach about
+// 10 to 15 on full-scale noise through unsmoothed jumps of cutoff and resonance (rarely more),
+// so for program material this is the original's arithmetic, and the output stays under
+// about 33 whatever the FM does.
+namespace {
+constexpr double kFmLimit = 32.0;
+double fmLimit(double y) {
+    return std::fabs(y) > kFmLimit ? std::copysign(kFmLimit + std::tanh(std::fabs(y) - kFmLimit), y) : y;
+}
+}  // namespace
+
+double FilterSQ::processFm(double x, double fm) {
+    double pe = p, ke = k, ge = g;
+    if (fm != 0.0) {
+        const float(*col)[2] = table->entry[reso];
+        double c = cutoff + fm;
+        if (c < 0.0) c = 0.0;
+        if (c > 255.0) c = 255.0;
+        int i = static_cast<int>(c);
+        if (i > 254) i = 254;
+        const double f = c - i;
+        const double pm = col[i][0] + f * (static_cast<double>(col[i + 1][0]) - col[i][0]);
+        const double km = col[i][1] + f * (static_cast<double>(col[i + 1][1]) - col[i][1]);
+        const double p0 = col[0][0], p1 = col[255][0], k0 = col[0][1], k1 = col[255][1];
+        pe = std::clamp(pe + (pm - col[cutoff][0]), std::min(p0, p1), std::max(p0, p1));
+        ke = std::clamp(ke + (km - col[cutoff][1]), std::min(k0, k1), std::max(k0, k1));
+        ge = ge + (pe - p) * half;
+    }
+    const double t = x * (ke * resoComp + 1.0f);
+    const double a4 = static_cast<double>(stage[3]) * ge - static_cast<double>(stage[4]) * pe;
+    const double a3 = static_cast<double>(stage[2]) * ge - static_cast<double>(stage[3]) * pe;
+    const double a2 = static_cast<double>(stage[1]) * ge - static_cast<double>(stage[2]) * pe;
+    const double a1 = static_cast<double>(stage[0]) * ge - static_cast<double>(stage[1]) * pe;
+    double y = fmLimit(t - static_cast<double>(stage[4]) * ke);
+    stage[0] = sgl(y);
+    y = fmLimit(y * ge + a1);
+    stage[1] = sgl(y);
+    y = fmLimit(y * ge + a2);
+    stage[2] = sgl(y);
+    y = fmLimit(y * ge + a3);
+    stage[3] = sgl(y);
+    y = fmLimit(y * ge + a4);
     stage[4] = sgl(y);
     const double out = y * gain;
     g = sgl((1.0f + static_cast<double>(p)) * half);

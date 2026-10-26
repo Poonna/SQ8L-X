@@ -31,6 +31,8 @@ jobs:
         run: ./build/sq8l_render_check --output-gain tests/regression
       - name: Filter types (port addition)
         run: ./build/sq8l_render_check --filter-types
+      - name: Filter FM (port addition)
+        run: ./build/sq8l_render_check --filter-fm
       - name: Editor additions of the port
         run: SQ8L_TESTAPI=$PWD/build/libsq8l_testapi.dylib python3 tests/test_gui_extensions.py
       - name: HD graphics
@@ -98,6 +100,8 @@ jobs:
         run: ./build/sq8l_render_check.exe --output-gain tests/regression
       - name: Filter types on real Windows
         run: ./build/sq8l_render_check.exe --filter-types
+      - name: Filter FM on real Windows
+        run: ./build/sq8l_render_check.exe --filter-fm
 
   linux:
     strategy:
@@ -130,6 +134,8 @@ jobs:
         run: ./build/sq8l_render_check --output-gain tests/regression
       - name: Filter types (port addition)
         run: ./build/sq8l_render_check --filter-types
+      - name: Filter FM (port addition)
+        run: ./build/sq8l_render_check --filter-fm
       - name: Drawn menus and dialogs
         run: ./build/sq8l_drawn_check
       - name: HD graphics

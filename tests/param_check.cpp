@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
     // Hosts store automation by index, so the order never changes: the first 228 are the
     // list as first published (FNV-1a of "name/edit index" lines), the parameters added since
     // follow in the order they were added (kAppended in HostParams.cpp).
-    const char* const added[] = {"FILT TYPE"};
+    const char* const added[] = {"FILT TYPE", "FILT FM SRC", "FILT FM AMT"};
     const size_t first = 228, total = first + sizeof added / sizeof added[0];
     uint64_t h = 0xcbf29ce484222325ull;
     for (size_t i = 0; i < first && i < params.size(); i++)

@@ -194,6 +194,11 @@ void formatValue(Fmt f, int width, int v, std::string& s) {
         s = unsigned(v) < 6 ? kNames[v] : "  ?  ";
         break;
     }
+    case Fmt::FilterFmSource: {  // (port) FILT -> FM SRC, ofs::FilterFmSource
+        static const char* const kNames[] = {"OFF ", "OSC1", "OSC2", "OSC3"};
+        s = unsigned(v) < 4 ? kNames[v] : " ?  ";
+        break;
+    }
     }
 }
 

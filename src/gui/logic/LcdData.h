@@ -35,6 +35,7 @@ enum class Fmt : uint8_t {
     Polyphony,     // (port) EMU -> VOICES: 0 = the original's 8, else the voices
     WaveDir,       // (port) oscillator wave direction: "->" forward, "<-" reverse
     FilterType,    // (port) FILT -> TYPE: SQ-80 LP2 BP2 HP2 NOTCH LP4
+    FilterFmSource,  // (port) FILT -> FM SRC: OFF OSC1 OSC2 OSC3
 };
 
 // Popup menu item texts (ClcdCtr_param +0x40).

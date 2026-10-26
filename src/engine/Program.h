@@ -130,6 +130,14 @@ constexpr size_t PanMod = 0x137;     // slot (amount -127..127)
 constexpr size_t Saturation = 0x13a; // s8 -1 OFF, 0 EMU, 1..15
 constexpr size_t EmuFlags2 = 0x13b;  // bits 0-1 ?, bit 2 MUFFLE
 constexpr size_t FilterKeyMode = 0x13c; // s8, value-1 passed to filter setKeyParam (0 by default)
+// (port) audio-rate filter FM, FILT -> FM SRC / FM AMT: the oscillator whose output moves the
+// cutoff every sample (0 OFF, 1..3 OSC1..OSC3) and how far (s8 -63..+63, in FREQ steps at the
+// oscillator's full swing). Two of the three spare bytes after the filter key mode, which
+// nothing ever writes (no page in the original, zeroed by INIT, beyond the reach of both
+// SysEx imports and of convertOldProgram), so every existing program reads as OFF. Same
+// approach as ofs::Polyphony; see docs/modules/program.md.
+constexpr size_t FilterFmSource = 0x13d;
+constexpr size_t FilterFmAmount = 0x13e;
 
 // Modes page.
 constexpr size_t Sync = 0x170;     // s8 0..1
@@ -172,6 +180,21 @@ inline int programFilterType(const uint8_t* program) {
     if (!program) return 0;
     const int t = static_cast<int>(program[ofs::filter(0) + ofs::Filter::Type]);
     return t < kNumFilterTypes ? t : 0;
+}
+
+// (port) Filter FM of a program record (ofs::FilterFmSource / FilterFmAmount): the oscillator
+// 0..2 that modulates the cutoff, -1 = OFF (also for a missing record and for a value no
+// version of the port writes), and the amount clamped to -63..+63.
+constexpr int kNumFilterFmSources = 4;  // OFF, OSC1, OSC2, OSC3
+inline int programFilterFmSource(const uint8_t* program) {
+    if (!program) return -1;
+    const int s = static_cast<int>(program[ofs::FilterFmSource]);
+    return s >= 1 && s < kNumFilterFmSources ? s - 1 : -1;
+}
+inline int programFilterFmAmount(const uint8_t* program) {
+    if (!program) return 0;
+    const int a = static_cast<int8_t>(program[ofs::FilterFmAmount]);
+    return a < -63 ? -63 : (a > 63 ? 63 : a);
 }
 
 // The program record. Plain bytes; all multi-byte fields are little endian and unaligned.

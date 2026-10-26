@@ -121,12 +121,23 @@ code and verified against the original plugin running inside an x86 emulator.
   imported SysEx dump — plays with the SQ-80 filter exactly as it always did, and the
   original can still load a bank the port saved (it plays the SQ-80 filter). The SysEx export
   cannot carry the type.
+- **Filter FM:** press FILT a second time (or pick *Filter FM* in the page menu) for
+  **FM SRC** and **FM AMT**: one of the three oscillators moves the filter cutoff every
+  sample, on top of everything else that moves it, which the original cannot do (its
+  modulation runs at about 84 Hz). This gives the growl, sidebands and metallic edges of
+  analog filter FM. The oscillator's wave is taken before its DCA, so an oscillator turned ON
+  at LEVEL 0 modulates the filter without being heard; one whose OUTPUT is off modulates
+  nothing (except OSC1 while it drives SYNC or AM, which keeps it running). FM AMT is in CUT steps at the oscillator's full swing (±63, about ±5 octaves at
+  the extremes); it works with every filter type, the SQ-80 filter included, and stays stable
+  at any setting (at full amount and resonance the SQ-80 filter saturates instead of running
+  away). Like the type, both are stored in the program; every program made without them has
+  FM SRC OFF and sounds exactly as it always did. The SysEx export cannot carry them.
 - **Parameters for the DAW (SQ8L-X):** the original publishes none, so a host could neither
-  automate the sound nor show it. The plug-in now publishes the 229 sound parameters of the
+  automate the sound nor show it. The plug-in now publishes the 231 sound parameters of the
   display pages, named after the page and the field as the display shows them (`OSC1 WAVE`,
   `FILT FREQ`, `LFO2 FMOD.SEL`, `EMU VOICES`...), with their ranges and, where the display
   names the values, the same names (`SAW`, `ENV3`, `TRI`...). Parameters added later
-  (`FILT TYPE`) come after the others, so automation a project already recorded keeps
+  (`FILT TYPE`, `FILT FM SRC`, `FILT FM AMT`) come after the others, so automation a project already recorded keeps
   pointing at the same parameters. A parameter is a field of the
   current program: automating it edits the program like turning its knob (the display follows),
   and selecting another program, loading a chunk or turning a knob in the editor changes what

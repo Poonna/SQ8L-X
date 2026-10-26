@@ -90,6 +90,9 @@ struct Forwarder final : VoiceModules {
     MasterDocParams& docVoiceParams(int v) override { return doc[v]; }
     void docUpdate(int v) override { call(M_DOC_UPDATE, v, -1, {}); }
     double docRender(int v) override { return call(M_DOC_RENDER, v, -1, {0.0}); }
+    // (port) read only with filter FM on, which the differential programs never set (their
+    // ofs::FilterFmSource is 0), so the master never calls it here.
+    double docOscSample(int, int) override { return 0.0; }
     int32_t docReleaseSamples() override { return icall(M_DOC_TAIL, -1, -1, {0.0}); }
 
     void lfoSetControlRate(int v, int l, float rate) override { call(M_LFO_RATE, v, l, {rate}); }

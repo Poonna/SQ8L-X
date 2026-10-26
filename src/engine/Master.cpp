@@ -77,6 +77,7 @@ Master::Master(VoiceModules& modules, int32_t sampleRate, const int32_t* overrid
     for (auto& pair : filters_)
         for (auto& f : pair) f.init(&filterTable_, 0.0f);
     for (auto& f : svfs_) f.init(&svfTable_, 0.0f);  // (port) FILT -> TYPE
+    for (auto& s : fmSource_) s = -1;  // (port) FILT -> FM SRC: OFF until a control tick
     setSampleRateInt(sampleRate);
     setControlRate(kDefaultControlRate);
     setVoices(kOriginalPlayableVoices, kOriginalFadeVoices);  // FUN_00463358(8, 8)
@@ -984,6 +985,11 @@ void Master::controlUpdate(Voice& v) {
         svfs_[vi].setType(type);
         svfs_[vi].setParams(cutoff, s8(F[1]), v.tickCount == 0 || was == 0);
     }
+    // (port) FILT -> FM SRC / FM AMT: the oscillator that moves the cutoff every sample (see
+    // processVoice), -1 = OFF, and how far in cutoff index steps per unit of its output: AMT
+    // FREQ steps (two index steps each) at the oscillator's full swing.
+    fmSource_[vi] = programFilterFmSource(prog);
+    fmDepth_[vi] = programFilterFmAmount(prog) * 2.0;
 
     // Amp
     modules_.ampSetSaturation(vi, s8(P[0x118]));
@@ -1026,7 +1032,19 @@ bool Master::processVoice(Voice& v, float* acc) {
     }
     if (!modules_.envActive(vi, 3) && !(modules_.ampRampCount(vi) > -modules_.docReleaseSamples())) return true;
     double x = modules_.docRender(v.slot);
-    x = filterType_[vi] == 0 ? filters_[vi][0].process(x) : svfs_[vi].process(x);  // (port) FILT -> TYPE
+    if (fmSource_[vi] < 0) {
+        x = filterType_[vi] == 0 ? filters_[vi][0].process(x) : svfs_[vi].process(x);  // (port) FILT -> TYPE
+    } else {
+        // (port) Audio-rate filter FM. The modulator is the oscillator's wave before its DCA,
+        // not after: an oscillator whose OUTPUT is on can then modulate the filter at LEVEL 0
+        // without being heard, which is how a 3-oscillator voice gets a dedicated filter
+        // modulator, and the depth is FM AMT alone rather than also following that
+        // oscillator's level, its DCA modulation and AM. An oscillator whose OUTPUT is off is
+        // halted by the DOC and modulates nothing, except OSC1 while it drives SYNC or AM,
+        // which the DOC keeps running.
+        const double fm = modules_.docOscSample(v.slot, fmSource_[vi]) * fmDepth_[vi];
+        x = filterType_[vi] == 0 ? filters_[vi][0].processFm(x, fm) : svfs_[vi].processFm(x, fm);
+    }
     bool finished = false;
     if (v.fading == 0) {
         modules_.ampProcess(vi, x, acc);

@@ -8,9 +8,9 @@
 // buffer's, so a program change, a chunk or the editor changes what the host reads.
 //
 // The order is that of the pages and must not change: hosts store automation by index. A
-// parameter added to a page after the list was first published (FILT TYPE) goes after all
-// the others instead, in the order it was added (kAppended in HostParams.cpp), so the
-// indices hosts already stored keep naming the same parameters.
+// parameter added to a page after the list was first published (FILT TYPE, FM SRC, FM AMT)
+// goes after all the others instead, in the order it was added (kAppended in
+// HostParams.cpp), so the indices hosts already stored keep naming the same parameters.
 #pragma once
 
 #include <string>

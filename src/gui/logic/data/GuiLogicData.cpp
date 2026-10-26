@@ -16,6 +16,10 @@
 //    columns between RES and KEYB, on knob 2 (the third). It is item 3 of the page, so the
 //    items after it moved up by one, and it takes an ordinal, so KEYBD names its parameter
 //    outright.
+//  * A second FILT sub-page for the audio-rate filter FM: FM SRC (parameter 288, program byte
+//    0x13d) and FM AMT (parameter 289, byte 0x13e) on knobs 1 and 2, laid out like a MODS
+//    slot ("FILT FM=   OSC1 * +32"). Pressing FILT again, or the page menu ("Filter FM"), reaches
+//    it; the first sub-page is unchanged.
 #include "../LcdData.h"
 
 namespace sq8l::gui::data {
@@ -116,6 +120,10 @@ static const ParamSetup kParams_4_0[] = {
     {8, "Frequency modulation amount 1", 242, Fmt::None, PopText::None, true, 0, Change::None},  // MOD1.AMT
     {9, "Frequency modulation source 2", 243, Fmt::ModSource, PopText::ModSource, false, 0, Change::None},  // MOD2.SEL
     {11, "Frequency modulation amount 2", 244, Fmt::None, PopText::None, true, 0, Change::None},  // MOD2.AMT
+};
+static const ParamSetup kParams_4_1[] = {
+    {2, "Audio-rate filter FM source (OFF, or the oscillator whose wave moves the cutoff every sample; it must be ON, its LEVEL does not matter)", 288, Fmt::FilterFmSource, PopText::None, true, 0, Change::None},  // (port) FM SRC
+    {4, "Audio-rate filter FM amount (cutoff steps at the oscillator's full swing; works with every filter type)", 289, Fmt::None, PopText::None, true, 0, Change::None},  // (port) FM AMT
 };
 static const ParamSetup kParams_5_0[] = {
     {1, "Amount of amplitude modulation by envelope 4 (=main volume)", -1, Fmt::None, PopText::None, true, 0, Change::None},  // ENV4.AMT
@@ -362,9 +370,10 @@ const PageSetup kPages[kNumPages] = {
         {"OSC3", 3, 2, 38, 0, 0, 0, kParams_3_0, 9},
         {"DCA3", 3, 2, 49, 0, 1, 0, kParams_3_1, 6},
      }},
-    {"[FILT][CUT={0,FREQ,3,0,127}] [RES={1,RES,2,0,31}] [TYPE={2,TYPE,5,0,5}] [KEYB * {4,KEYBD,3,-63,+63}]\\&5 [MODS=] 2 [{6,MOD1.SEL,6,-1,145}] [*] [{7,MOD1.AMT,4,-127,+127}] 2 [{8,MOD2.SEL,6,-1,145}] [*] [{9,MOD2.AMT,4,-127,+127}]",
-     1, {
+    {"[FILT][CUT={0,FREQ,3,0,127}] [RES={1,RES,2,0,31}] [TYPE={2,TYPE,5,0,5}] [KEYB * {4,KEYBD,3,-63,+63}]\\&5 [MODS=] 2 [{6,MOD1.SEL,6,-1,145}] [*] [{7,MOD1.AMT,4,-127,+127}] 2 [{8,MOD2.SEL,6,-1,145}] [*] [{9,MOD2.AMT,4,-127,+127}]\\&[FILT][FM=] 2 [{1,FM SRC,4,0,3}] [*] [{2,FM AMT,3,-63,+63}]\\&",
+     2, {
         {"Filter", 4, 4, 237, 0, 0, 0, kParams_4_0, 8},
+        {"Filter FM", 4, 4, 237, 0, 1, 0, kParams_4_1, 2},
      }},
     {"[DCA4] [ENV4 * {0,ENV4.AMT,2,0,63}] 5 [SAT={2,SAT,3,-1,15}] 2 [PAN={3,PAN,3,-63,+63}]\\&5 [MODS=] 3 [{6,AMOD.SEL,6,-1,145}] [*] [{7,AMOD.AMT,3,-63,+63}] 3 [{8,PMOD.SEL,6,-1,145}] [*] [{9,PMOD.AMT,4,-127,+127}]",
      1, {
