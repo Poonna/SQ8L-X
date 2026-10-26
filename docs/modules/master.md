@@ -340,3 +340,34 @@ fade slots does not change a single sum (243/243 regression renders). With more 
 performance renders identically as long as it never takes over a sounding voice with 8
 (`Master::stealCount`, `render_check --polyphony`). The output is not rescaled: more voices
 sounding together add up to a higher level.
+
+## Filter types (port addition)
+
+FILT -> TYPE (`ofs::Filter::Type`, program byte 0x110, `programFilterType`, see
+[program.md](program.md#filter-type-port-addition-0x110)) picks the filter a voice plays:
+0, what every program the original made has, is `filters_[v][0]` (`FilterSQ`) exactly as
+before; 1..5 are `svfs_[v]` (`FilterSvf`, `src/engine/FilterSvf.{h,cpp}`), a linear
+trapezoidal state variable filter after Andy Simper (Cytomic, *SvfLinearTrapOptimised2*):
+LP2, BP2, HP2, NOTCH (2-pole) and LP4 (two cascaded 2-pole stages with the Butterworth Qs
+0.54 and 1.31, the resonance on the second).
+
+The SVF takes FilterSQ's inputs: the same cutoff index (`FREQ * 2` plus key tracking, the
+two FREQ modulation slots and CC74, computed once in `controlUpdate`) looked up in the same
+`filterUnitTables().cutoffHz`, and RES 0..31. `SvfTable` (rebuilt with `FilterTable` on a
+sample rate change) holds `g = tan(pi fc / sr)` per index, with fc clamped to 0.49 sr like
+FilterSQ's; RES sets Q from the stage's Butterworth value up to 16 exponentially, so k = 1/Q
+is never 0 and the filter cannot run away at any sample rate. The cutoff is smoothed per
+sample *as an index* (log frequency) and g interpolated between table entries, k and the
+output gain likewise, with FilterSQ's smoothing time, so control-rate modulation steps sweep
+instead of clicking. LP2, HP2 and LP4 take the original's resonance gain compensation
+(`resoGain`); BP2 (normalised to 0 dB at the cutoff) and NOTCH never rise above unity. State
+is double precision, far from the denormal range whatever the input.
+
+`filterType_[v]` is the type the voice plays. It is set at a note start (a legato steal
+inherits the stolen voice's type and SVF state, as FilterSQ copies its state) and followed
+at every control tick: switching between FilterSQ and the SVF while a note plays clears the
+one taking over and puts it on its target immediately; switching between SVF types keeps
+the state. FilterSQ still gets its `setParams` every tick whatever the type, and its
+`process` only runs for type 0, so a type 0 voice is untouched (243/243 regression
+renders). `render_check --filter-types` checks the response of each type at 44.1-384 kHz,
+resonance, fast modulation, smoothing and whole programs.

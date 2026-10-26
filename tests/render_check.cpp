@@ -22,6 +22,10 @@
 //   sq8l_render_check --output-gain tests/regression
 //       OPTIONS -> Output gain (port addition, issue #52): every cut scales the uncut
 //       render by exactly its power of two, and the cut travels in the host chunk.
+//   sq8l_render_check --filter-types
+//       Filter types (FILT -> TYPE, a port addition): the response of each type at sample
+//       rates from 44.1 to 384 kHz, resonance, fast modulation, smoothing; then programs
+//       rendered with every type. Needs no files.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -33,6 +37,9 @@
 #include <string>
 #include <vector>
 
+#include "FilterSQ.h"
+#include "FilterSvf.h"
+#include "Program.h"
 #include "Synth.h"
 
 namespace {
@@ -568,6 +575,255 @@ int direction() {
     return bad || oneShotBad || progBad ? 1 : 0;
 }
 
+// (port) Filter types (FILT -> TYPE, ofs::Filter::Type, FilterSvf). The filter alone, at
+// sample rates from 44.1 to 384 kHz: each type passes and stops what it should a decade
+// either side of its cutoff, resonance raises the peak (and narrows the band), random fast
+// modulation of cutoff and resonance stays finite and bounded, and a cutoff step is
+// smoothed. Then whole programs: no factory program has the byte set, an out-of-range value
+// renders like type 0, every other type renders finite and non-silent and changes the
+// sound, HP2 is brighter than LP2 and LP4 darker, and switching the type while a note plays
+// stays finite. Needs no files.
+int filterTypes() {
+    using namespace sq8l;
+    constexpr double kPi = 3.14159265358979323846;
+    const char* const names[FilterType::Count] = {"SQ-80", "LP2", "BP2", "HP2", "NOTCH", "LP4"};
+    int bad = 0;
+    auto fail = [&](const char* what, int type, double sr, double v) {
+        bad++;
+        std::printf("BAD %s %s at %.0f Hz: %g\n", names[type], what, sr, v);
+    };
+
+    // The cutoff index nearest 1 kHz.
+    const float* hz = filterUnitTables().cutoffHz;
+    int c1k = 0;
+    for (int c = 0; c < 256; c++)
+        if (std::fabs(hz[c] - 1000.0f) < std::fabs(hz[c1k] - 1000.0f)) c1k = c;
+    const double fc = hz[c1k];
+    // Steady-state gain of a sine at f (the second half of 1 s).
+    auto gain = [&](const SvfTable& t, float sr, int type, int reso, double f) {
+        FilterSvf flt;
+        flt.init(&t, sr);
+        flt.setType(type);
+        flt.setParams(c1k, reso, true);
+        const int n = static_cast<int>(sr);
+        double in2 = 0, out2 = 0;
+        for (int i = 0; i < n; i++) {
+            const double x = std::sin(2 * kPi * f * i / sr);
+            const double y = flt.process(x);
+            if (i >= n / 2) in2 += x * x, out2 += y * y;
+        }
+        return std::sqrt(out2 / in2);
+    };
+    uint32_t rng = 0x12345678u;
+    auto next = [&rng] {
+        rng ^= rng << 13, rng ^= rng >> 17, rng ^= rng << 5;
+        return rng;
+    };
+    for (const float sr : {44100.0f, 48000.0f, 88200.0f, 96000.0f, 192000.0f, 384000.0f}) {
+        SvfTable t;
+        t.compute(sr);
+        double lo[FilterType::Count] = {}, mid[FilterType::Count] = {}, hi[FilterType::Count] = {};
+        for (int type = 1; type < FilterType::Count; type++) {
+            lo[type] = gain(t, sr, type, 0, fc / 10);
+            mid[type] = gain(t, sr, type, 0, fc);
+            hi[type] = gain(t, sr, type, 0, fc * 10);
+        }
+        using namespace FilterType;
+        // RES 0: Butterworth lowpass/highpass (-3 dB at the cutoff, 12 or 24 dB/oct), unity
+        // peak bandpass, notch at the cutoff.
+        if (lo[Lp2] < 0.95) fail("passband (cutoff/10)", Lp2, sr, lo[Lp2]);
+        if (hi[Lp2] > 0.02) fail("stopband (cutoff*10)", Lp2, sr, hi[Lp2]);
+        if (mid[Lp2] < 0.65 || mid[Lp2] > 0.76) fail("gain at the cutoff", Lp2, sr, mid[Lp2]);
+        if (lo[Lp4] < 0.95) fail("passband (cutoff/10)", Lp4, sr, lo[Lp4]);
+        if (hi[Lp4] > 0.0005) fail("stopband (cutoff*10)", Lp4, sr, hi[Lp4]);
+        if (mid[Lp4] < 0.65 || mid[Lp4] > 0.76) fail("gain at the cutoff", Lp4, sr, mid[Lp4]);
+        if (hi[Hp2] < 0.95) fail("passband (cutoff*10)", Hp2, sr, hi[Hp2]);
+        if (lo[Hp2] > 0.02) fail("stopband (cutoff/10)", Hp2, sr, lo[Hp2]);
+        if (mid[Hp2] < 0.65 || mid[Hp2] > 0.76) fail("gain at the cutoff", Hp2, sr, mid[Hp2]);
+        if (mid[Bp2] < 0.98 || mid[Bp2] > 1.02) fail("gain at the cutoff", Bp2, sr, mid[Bp2]);
+        if (lo[Bp2] > 0.2 || hi[Bp2] > 0.2) fail("skirts (cutoff/10, *10)", Bp2, sr, std::max(lo[Bp2], hi[Bp2]));
+        if (mid[Notch] > 0.01) fail("gain at the cutoff", Notch, sr, mid[Notch]);
+        if (lo[Notch] < 0.97 || hi[Notch] < 0.97) fail("passband", Notch, sr, std::min(lo[Notch], hi[Notch]));
+        // RES 31: the lowpass and highpass peak at the cutoff, the bandpass narrows.
+        for (const int type : {Lp2, Hp2, Lp4}) {
+            const double g = gain(t, sr, type, 31, fc);
+            if (!(g > 2.0 && g < 10.0)) fail("resonant peak (RES 31)", type, sr, g);
+        }
+        const double narrow = gain(t, sr, Bp2, 31, fc / 10);
+        if (narrow > lo[Bp2] / 4) fail("band at RES 31, gain at cutoff/10", Bp2, sr, narrow);
+        const double notch = gain(t, sr, Notch, 31, fc);
+        if (notch > 0.01) fail("gain at the cutoff, RES 31", Notch, sr, notch);
+
+        // Fast random modulation (a jump every 16 samples, half of them unsmoothed) on white
+        // noise: always finite, never more than a resonant peak.
+        for (int type = 1; type < Count; type++) {
+            FilterSvf flt;
+            flt.init(&t, sr);
+            flt.setType(type);
+            double peak = 0;
+            for (int i = 0; i < static_cast<int>(sr); i++) {
+                if (i % 16 == 0) {
+                    const int32_t c = int32_t(next() % 256), r = int32_t(next() % 32);
+                    flt.setParams(c, r, (next() & 1) != 0);
+                }
+                const double x = (next() / 4294967295.0) * 2 - 1;
+                const double y = flt.process(x);
+                if (!std::isfinite(y)) {
+                    peak = INFINITY;
+                    break;
+                }
+                peak = std::max(peak, std::fabs(y));
+            }
+            if (!(peak < 50)) fail("under fast modulation, peak", type, sr, peak);
+        }
+
+        // A cutoff step from index 0 to 255 under a 2 kHz sine: unsmoothed the sine is through
+        // within a few samples, smoothed it is not yet, and both settle to the same output.
+        for (const int type : {Lp2, Lp4}) {
+            double first[2] = {}, last[2] = {};
+            for (int smooth = 0; smooth < 2; smooth++) {
+                FilterSvf flt;
+                flt.init(&t, sr);
+                flt.setType(type);
+                flt.setParams(0, 0, true);
+                const int settle = static_cast<int>(sr / 2), after = static_cast<int>(sr / 10);
+                for (int i = 0; i < settle + after; i++) {
+                    if (i == settle) flt.setParams(255, 0, smooth == 0);
+                    const double y = flt.process(std::sin(2 * kPi * 2000 * i / sr));
+                    if (i >= settle && i < settle + 10) first[smooth] = std::max(first[smooth], std::fabs(y));
+                    if (i == settle + after - 1) last[smooth] = y;
+                }
+            }
+            if (!(first[1] < first[0] / 4)) fail("cutoff step not smoothed (first 10 samples)", type, sr, first[1]);
+            if (std::fabs(last[0] - last[1]) > 1e-6) fail("smoothed step does not settle", type, sr, last[1]);
+        }
+    }
+    std::printf("filter: 5 types at 6 sample rates: pass/stop bands, resonance, fast modulation, smoothing (%s)\n",
+                bad ? "FAILED" : "ok");
+
+    // Whole programs.
+    int progBad = 0, set = 0;
+    {
+        Synth synth(44100.0f);
+        for (int prog = 0; prog < 512; prog++) {
+            synth.setProgram(prog);
+            if (synth.editBuffer().current().u8(ofs::filter(0) + ofs::Filter::Type) != 0) set++;
+        }
+    }
+    if (set) {
+        progBad++;
+        std::printf("BAD: %d factory programs have the filter type byte set\n", set);
+    }
+    // `prog`: a factory program, -1 = INIT (OSC1 SAW, no filter modulation or tracking).
+    // `types`: the type byte for each block of the 1 s note (86 blocks of 512). `freq`: the
+    // filter's FREQ instead of the program's, -1 = the program's.
+    auto renderProg = [](int prog, const std::vector<int>& types, std::vector<float>& L, std::vector<float>& R,
+                         int freq = -1) {
+        Synth synth(44100.0f);
+        synth.setSampleRate(44100.0f);
+        synth.setProgram(prog < 0 ? 0 : prog);
+        if (prog < 0) initProgram(synth.editBuffer().current());
+        if (freq >= 0) synth.editBuffer().current().setU8(ofs::filter(0) + ofs::Filter::Freq, unsigned(freq));
+        std::vector<RawMidiEvent> ev(1);
+        ev[0].deltaFrames = 0;
+        ev[0].data[0] = 0x90;
+        ev[0].data[1] = 60;
+        ev[0].data[2] = 100;
+        ev[0].noteOffVelocity = 0;
+        synth.processEvents(ev.data(), 1);
+        std::vector<float> l(512), r(512);
+        for (int b = 0; b < 86; b++) {
+            synth.editBuffer().current().setU8(ofs::filter(0) + ofs::Filter::Type, unsigned(types[size_t(b)]));
+            synth.process(l.data(), r.data(), 512, true);
+            L.insert(L.end(), l.begin(), l.end());
+            R.insert(R.end(), r.begin(), r.end());
+        }
+    };
+    auto rms = [](const std::vector<float>& v) {
+        double s = 0;
+        for (const float x : v) s += double(x) * x;
+        return std::sqrt(s / double(v.size()));
+    };
+    // Share of the signal's energy in its first difference: higher is brighter.
+    auto brightness = [](const std::vector<float>& v) {
+        double d = 0, s = 0;
+        for (size_t i = 1; i < v.size(); i++) {
+            const double e = double(v[i]) - v[i - 1];
+            d += e * e;
+            s += double(v[i]) * v[i];
+        }
+        return s > 0 ? d / s : 0.0;
+    };
+
+    // A sawtooth (INIT) through each type with the cutoff in the middle (FREQ 64, ~2.2 kHz,
+    // a C4 note): every type audible, and LP4 darker than LP2, darker than BP2, darker than
+    // HP2.
+    {
+        double level[FilterType::Count], bright[FilterType::Count];
+        for (int type = 0; type < FilterType::Count; type++) {
+            std::vector<float> L, R;
+            renderProg(-1, std::vector<int>(86, type), L, R, 64);
+            level[type] = rms(L);
+            bright[type] = brightness(L);
+            std::printf("  INIT saw, FREQ 64, %-5s: rms %.4f, brightness %.4f\n", names[type], level[type], bright[type]);
+            if (!finite(L) || !finite(R) || level[type] < 1e-3) {
+                progBad++;
+                std::printf("BAD INIT %s: non-finite or silent\n", names[type]);
+            }
+        }
+        using namespace FilterType;
+        if (!(bright[Lp4] < bright[Lp2] && bright[Lp2] < bright[Bp2] && bright[Bp2] < bright[Hp2])) {
+            progBad++;
+            std::printf("BAD INIT: brightness not LP4 < LP2 < BP2 < HP2\n");
+        }
+    }
+
+    // The factory programs as they are (many keep the filter wide open, where a highpass or
+    // bandpass rightly removes almost everything, so nothing is asked of their level): every
+    // type finite and different from type 0, a type byte no version writes plays type 0, and
+    // switching the type while a note plays stays finite.
+    int programs = 0;
+    int changed[FilterType::Count] = {};
+    for (int prog = 0; prog < 512; prog += 23) {
+        std::vector<float> L[FilterType::Count], R[FilterType::Count];
+        for (int type = 0; type < FilterType::Count; type++)
+            renderProg(prog, std::vector<int>(86, type), L[type], R[type]);
+        if (rms(L[0]) < 1e-4) continue;  // nothing to filter
+        programs++;
+        std::vector<float> L200, R200;
+        renderProg(prog, std::vector<int>(86, 200), L200, R200);
+        if (hashLR(L200, R200) != hashLR(L[0], R[0])) {
+            progBad++;
+            std::printf("BAD program %d: type byte 200 does not render like type 0\n", prog);
+        }
+        for (int type = 1; type < FilterType::Count; type++) {
+            if (!finite(L[type]) || !finite(R[type])) {
+                progBad++;
+                std::printf("BAD program %d %s: non-finite output\n", prog, names[type]);
+            }
+            if (hashLR(L[type], R[type]) != hashLR(L[0], R[0])) changed[type]++;
+        }
+        // SQ-80 -> LP4 -> BP2 -> SQ-80
+        std::vector<int> seq(86, FilterType::Sq80);
+        for (int b = 20; b < 40; b++) seq[size_t(b)] = FilterType::Lp4;
+        for (int b = 40; b < 60; b++) seq[size_t(b)] = FilterType::Bp2;
+        std::vector<float> Ls, Rs;
+        renderProg(prog, seq, Ls, Rs);
+        if (!finite(Ls) || !finite(Rs)) {
+            progBad++;
+            std::printf("BAD program %d: non-finite output switching types mid-note\n", prog);
+        }
+    }
+    std::printf("programs: %d rendered, %d factory programs with the type set, byte 200 renders as type 0\n",
+                programs, set);
+    for (int type = 1; type < FilterType::Count; type++) {
+        std::printf("  %-5s changes the sound of %d/%d\n", names[type], changed[type], programs);
+        if (changed[type] < programs) progBad++;
+    }
+    std::printf("programs (%s)\n", progBad ? "FAILED" : "ok");
+    return bad || progBad ? 1 : 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -575,5 +831,6 @@ int main(int argc, char** argv) {
     if (argc > 2 && std::string(argv[1]) == "--polyphony") return polyphony(argv[2]);
     if (argc > 1 && std::string(argv[1]) == "--direction") return direction();
     if (argc > 2 && std::string(argv[1]) == "--output-gain") return outputGain(argv[2]);
+    if (argc > 1 && std::string(argv[1]) == "--filter-types") return filterTypes();
     return golden(argc > 1 ? argv[1] : "tests/golden_raw");
 }

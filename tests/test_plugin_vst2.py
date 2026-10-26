@@ -122,8 +122,8 @@ def main():
     meta = (struct.pack('>i', port.e.uniqueID), port.e.numPrograms, port.e.numOutputs, port.e.flags)
     port.close()
     print(f"plugin: uniqueID {meta[0]}, programs {meta[1]}, outputs {meta[2]}, flags {meta[3]:#x} "
-          f"(original: b'SQ8L', 512, 2, 0x131; SQ8L-X has its own ID, b'SQ8X')")
-    ok &= meta[:3] == (b"SQ8X", 512, 2)
+          f"(original: b'SQ8L', 512, 2, 0x131; SQ8L-X has its own ID, b'S8LX')")
+    ok &= meta[:3] == (b"S8LX", 512, 2)
     files = sorted(glob.glob(os.path.join(GOLDEN, "*.npz")))[:21]
     n_ok = 0
     for f in files:

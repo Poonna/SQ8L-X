@@ -64,6 +64,24 @@ int main(int argc, char** argv) {
                 fail(p, ("also changes " + q.name).c_str());
         eb.current() = ref.current();
     }
+    // Hosts store automation by index, so the order never changes: the first 228 are the
+    // list as first published (FNV-1a of "name/edit index" lines), the parameters added since
+    // follow in the order they were added (kAppended in HostParams.cpp).
+    const char* const added[] = {"FILT TYPE"};
+    const size_t first = 228, total = first + sizeof added / sizeof added[0];
+    uint64_t h = 0xcbf29ce484222325ull;
+    for (size_t i = 0; i < first && i < params.size(); i++)
+        for (const char c : params[i].name + "/" + std::to_string(params[i].editIndex) + "\n") {
+            h ^= static_cast<uint8_t>(c);
+            h *= 0x100000001b3ull;
+        }
+    if (params.size() != total || h != 0xcec739d6fac99344ull) {
+        std::fprintf(stderr, "the published order changed (%zu parameters, hash of the first %zu %016llx)\n",
+                     params.size(), first, static_cast<unsigned long long>(h));
+        errors++;
+    }
+    for (size_t i = first; i < total && i < params.size(); i++)
+        if (params[i].name != added[i - first]) fail(params[i], "not where it was added to the published order");
     std::printf("%zu parameters, %d problem(s)\n", params.size(), errors);
     return errors ? 1 : 0;
 }

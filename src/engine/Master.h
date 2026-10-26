@@ -12,6 +12,7 @@
 #include <functional>
 
 #include "FilterSQ.h"
+#include "FilterSvf.h"
 #include "MidiParser.h"
 #include "Tuning.h"
 #include "Voice.h"
@@ -117,6 +118,9 @@ public:
 
     const Voice& voice(int i) const { return voices_[i]; }
     const FilterSQ& filter(int voice, int i) const { return filters_[voice][i]; }
+    // (port) the filter of the other types (FILT -> TYPE) and the type a voice plays
+    const FilterSvf& svf(int voice) const { return svfs_[voice]; }
+    int filterType(int voice) const { return filterType_[voice]; }
     float volume() const { return volume_; }
 
 private:
@@ -212,6 +216,11 @@ private:
     int32_t ovrDcBlock_ = 0;                          // +0x0ff4 DC blocking, Cdoc +0x7c (ini index 4)
     FilterTable filterTable_{};                       // +0x1004
     FilterSQ filters_[kMaxVoices][2];                 // voice +0x74 / +0x78 objects
+    // (port) FILT -> TYPE: a voice plays filters_[v][0] for type 0 (the original) and
+    // svfs_[v] for the others; filterType_ is the type it plays now.
+    SvfTable svfTable_{};
+    FilterSvf svfs_[kMaxVoices];
+    int32_t filterType_[kMaxVoices] = {};
     int32_t tickToggle_ = 0;                          // +0x11004
     float smoothB_ = 0;                               // +0x11008 (computed, never used)
     float smoothA_ = 0;                               // +0x1100c (computed, never used)

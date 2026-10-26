@@ -34,7 +34,7 @@ code and verified against the original plugin running inside an x86 emulator.
   knobs, a tidier OPTIONS menu.
 - **Compatibility.** Same 512 programs and the same chunk format as the original. Library
   files (`.8XL`), bank files and SQ-80/ESQ-1 SysEx are read and written exactly like the
-  original. SQ8L-X has its own plug-in IDs (VST2 `SQ8X`, AU subtype `SQ8X`, its own VST3,
+  original. SQ8L-X has its own plug-in IDs (VST2 `S8LX`, AU subtype `S8LX`, its own VST3,
   CLAP and LV2 IDs), so a host sees it as a different plug-in: a project saved with the
   original SQ8L or the SQ8L port keeps using that plug-in and does not open in SQ8L-X. To
   bring a sound across, save it to the library or a bank there and load it in SQ8L-X.
@@ -110,11 +110,24 @@ code and verified against the original plugin running inside an x86 emulator.
   are voices. With 8 voices the sound is bit-exact; with more, a performance changes only
   where the original would have stolen a voice. The output is not rescaled, so many voices
   sounding together are louder: use *Output gain* above if needed.
+- **Filter types:** the FILT page has a **TYPE** field (between RES and KEYB). *SQ-80* is
+  the original's 4-pole lowpass, bit for bit; *LP2*, *BP2*, *HP2* and *NOTCH* are 2-pole
+  lowpass, bandpass, highpass and band-reject filters and *LP4* a 4-pole (24 dB/oct)
+  lowpass, all from a state variable filter after Andy Simper's (Cytomic) linear trapezoidal
+  design. They take the same CUT, RES, KEYB and FREQ modulation as the original filter, and
+  sweep smoothly under fast modulation. The type belongs to the sound, so it is stored in the
+  program and travels with it into banks, libraries and your project; every program that
+  does not have it — anything made by the original SQ8L, any `.8XL` or bank file, any
+  imported SysEx dump — plays with the SQ-80 filter exactly as it always did, and the
+  original can still load a bank the port saved (it plays the SQ-80 filter). The SysEx export
+  cannot carry the type.
 - **Parameters for the DAW (SQ8L-X):** the original publishes none, so a host could neither
-  automate the sound nor show it. The plug-in now publishes the 228 sound parameters of the
+  automate the sound nor show it. The plug-in now publishes the 229 sound parameters of the
   display pages, named after the page and the field as the display shows them (`OSC1 WAVE`,
   `FILT FREQ`, `LFO2 FMOD.SEL`, `EMU VOICES`...), with their ranges and, where the display
-  names the values, the same names (`SAW`, `ENV3`, `TRI`...). A parameter is a field of the
+  names the values, the same names (`SAW`, `ENV3`, `TRI`...). Parameters added later
+  (`FILT TYPE`) come after the others, so automation a project already recorded keeps
+  pointing at the same parameters. A parameter is a field of the
   current program: automating it edits the program like turning its knob (the display follows),
   and selecting another program, loading a chunk or turning a knob in the editor changes what
   the host sees. Knob turns are reported to the host as one gesture each, so a touch or latch
